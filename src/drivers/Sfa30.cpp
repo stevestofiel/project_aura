@@ -61,7 +61,9 @@ void Sfa30::start() {
     }
     if (!probe()) {
         ok_ = false;
-        LOGW(label(), "detect failed (%s)", errorCauseLabel());
+        if (status_ != Status::Absent) {
+            LOGW(label(), "detect failed (%s)", errorCauseLabel());
+        }
         return;
     }
 

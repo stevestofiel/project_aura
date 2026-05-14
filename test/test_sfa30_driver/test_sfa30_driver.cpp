@@ -40,6 +40,17 @@ void setValidDeviceMarkingResponse() {
                             sizeof(marking_data));
 }
 
+bool recentContainsMessagePrefix(const char *prefix) {
+    Logger::RecentEntry recent[16];
+    const size_t count = Logger::copyRecent(recent, sizeof(recent) / sizeof(recent[0]));
+    for (size_t i = 0; i < count; ++i) {
+        if (strncmp(recent[i].message, prefix, strlen(prefix)) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 static_assert(Config::SFA3X_CMD_START == 0x0006, "SFA30 start opcode drifted from datasheet");
@@ -63,6 +74,7 @@ void test_real_sfa30_start_keeps_absent_when_device_does_not_ack() {
     Sfa30 sfa;
 
     TEST_ASSERT_TRUE(sfa.begin());
+    Logger::resetRecentForTest();
     sfa.start();
 
     TEST_ASSERT_FALSE(sfa.isPresent());
@@ -70,6 +82,7 @@ void test_real_sfa30_start_keeps_absent_when_device_does_not_ack() {
     TEST_ASSERT_FALSE(sfa.hasFault());
     TEST_ASSERT_EQUAL(static_cast<int>(Sfa30::Status::Absent),
                       static_cast<int>(sfa.status()));
+    TEST_ASSERT_FALSE(recentContainsMessagePrefix("detect failed ("));
 }
 
 void test_real_sfa30_start_marks_fault_when_present_but_start_fails() {
@@ -246,6 +259,7 @@ void test_real_sfa30_start_marks_fault_when_device_marking_read_fails() {
     Sfa30 sfa;
 
     TEST_ASSERT_TRUE(sfa.begin());
+    Logger::resetRecentForTest();
     sfa.start();
 
     TEST_ASSERT_TRUE(sfa.isPresent());
@@ -253,6 +267,7 @@ void test_real_sfa30_start_marks_fault_when_device_marking_read_fails() {
     TEST_ASSERT_TRUE(sfa.hasFault());
     TEST_ASSERT_EQUAL(static_cast<int>(Sfa30::Status::Fault),
                       static_cast<int>(sfa.status()));
+    TEST_ASSERT_TRUE(recentContainsMessagePrefix("detect failed ("));
 }
 
 void test_real_sfa30_start_marks_fault_when_device_marking_is_empty() {
