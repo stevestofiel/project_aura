@@ -17,12 +17,14 @@
 #include <esp_http_server.h>
 #include <lwip/sockets.h>
 
+#include "core/Logger.h"
 #include "core/Watchdog.h"
 
 namespace {
 
 constexpr uint16_t kHttpServerRecvWaitTimeoutS = 10;
 constexpr uint16_t kHttpServerSendWaitTimeoutS = 30;
+constexpr size_t kHttpServerMaxUriHandlers = 48;
 constexpr uint32_t kMultipartReadIdleTimeoutMs = 90UL * 1000UL;
 constexpr uint32_t kDrainRecvTimeoutMs = 200;
 
@@ -702,8 +704,17 @@ bool EspHttpServerBackend::registerRoute(RouteRegistration &route) {
     route.descriptor.method = route.method;
     route.descriptor.handler = esp_route_dispatch;
     route.descriptor.user_ctx = &route;
-    return httpd_register_uri_handler(static_cast<httpd_handle_t>(server_handle_),
-                                      &route.descriptor) == ESP_OK;
+    const esp_err_t err =
+        httpd_register_uri_handler(static_cast<httpd_handle_t>(server_handle_),
+                                   &route.descriptor);
+    if (err != ESP_OK) {
+        LOGW("WEB", "route registration failed (method=%d uri=%s err=%d)",
+             static_cast<int>(route.method),
+             route.uri.c_str(),
+             static_cast<int>(err));
+        return false;
+    }
+    return true;
 }
 
 bool EspHttpServerBackend::prepareRequest(RouteRegistration &route, void *raw_req) {
@@ -914,7 +925,7 @@ void EspHttpServerBackend::begin() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = port_;
     config.stack_size = 12288;
-    config.max_uri_handlers = 32;
+    config.max_uri_handlers = kHttpServerMaxUriHandlers;
     config.max_resp_headers = 16;
     config.global_user_ctx = this;
     config.global_user_ctx_free_fn = nullptr;
