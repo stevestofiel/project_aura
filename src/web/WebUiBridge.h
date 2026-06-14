@@ -21,6 +21,14 @@ public:
         DeferredReply,
     };
 
+    enum class FirmwareUpdateScreenMode : uint8_t {
+        Hidden = 0,
+        ConfirmPending,
+        ConfirmAllowed,
+        ConfirmDenied,
+        Installing,
+    };
+
     struct Snapshot {
         bool available = false;
         bool night_mode = false;
@@ -153,8 +161,8 @@ public:
     bool consumePendingMqttSaveRequest(MqttSaveUpdate &update, uint32_t &request_id);
     void completePendingMqttSaveRequest(uint32_t request_id, const ApplyResult &result);
 
-    void requestFirmwareUpdateScreen(bool active);
-    bool consumePendingFirmwareUpdateScreen(bool &active);
+    void requestFirmwareUpdateScreen(FirmwareUpdateScreenMode mode);
+    bool consumePendingFirmwareUpdateScreen(FirmwareUpdateScreenMode &mode);
     void setMqttScreenOpen(bool open);
     void setThemeScreenOpen(bool open, bool custom_open);
 
@@ -221,5 +229,5 @@ private:
     ApplyResult pending_mqtt_save_result_{};
     uint32_t pending_mqtt_save_result_id_ = 0;
     bool firmware_update_screen_pending_ = false;
-    bool firmware_update_screen_active_ = false;
+    FirmwareUpdateScreenMode firmware_update_screen_mode_ = FirmwareUpdateScreenMode::Hidden;
 };

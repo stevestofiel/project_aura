@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #include "web/OtaDeferredRestart.h"
+#include "web/OtaPhysicalConfirm.h"
 #include "web/WebContext.h"
 #include "web/WebDeferredActionsState.h"
 #include "web/WebOtaHandlers.h"
@@ -41,6 +42,8 @@ bool shouldPauseMqttForTransfer();
 void noteMqttConnectDeferred();
 void noteMqttPublishDeferred();
 void pollDeferred();
+bool allowOtaPhysicalConfirm();
+bool denyOtaPhysicalConfirm();
 
 WebOtaSnapshot otaSnapshot();
 WebTransferSnapshot streamSnapshot(uint32_t now_ms);

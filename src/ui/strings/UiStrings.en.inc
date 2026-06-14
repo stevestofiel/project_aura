@@ -326,7 +326,7 @@
     "Acceptable: >250-600 #/cm3\nNormal indoor activity, no action needed",
     "Uncomfortable: >600-1200 #/cm3\nSource detected, ventilate or run air purifier",
     "Poor: >1200 #/cm3\nHigh count, identify source and improve airflow",
-    "Firmware Update\nInstalling update...\nDo not power off the device.\nDevice will reboot automatically.",
+    "Installing update...\nDo not power off the device.\nDevice will reboot automatically.",
     "SET ALTITUDE",
     "CLICK TO\nSET\nALTITUDE",
     "MSL Pressure\nSea-level corrected pressure for weather comparison.",

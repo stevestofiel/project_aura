@@ -613,20 +613,20 @@ void WebUiBridge::completePendingMqttSaveRequest(uint32_t request_id, const Appl
     }
 }
 
-void WebUiBridge::requestFirmwareUpdateScreen(bool active) {
+void WebUiBridge::requestFirmwareUpdateScreen(FirmwareUpdateScreenMode mode) {
     lock();
-    firmware_update_screen_active_ = active;
+    firmware_update_screen_mode_ = mode;
     firmware_update_screen_pending_ = true;
     unlock();
 }
 
-bool WebUiBridge::consumePendingFirmwareUpdateScreen(bool &active) {
+bool WebUiBridge::consumePendingFirmwareUpdateScreen(FirmwareUpdateScreenMode &mode) {
     lock();
     if (!firmware_update_screen_pending_) {
         unlock();
         return false;
     }
-    active = firmware_update_screen_active_;
+    mode = firmware_update_screen_mode_;
     firmware_update_screen_pending_ = false;
     unlock();
     return true;

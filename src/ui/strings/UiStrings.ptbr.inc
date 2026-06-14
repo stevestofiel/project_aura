@@ -326,7 +326,7 @@
     "Acceptable: >250-600 #/cm3\nInterior normal, nenhuma acao necessaria",
     "Uncomfortable: >600-1200 #/cm3\nFonte detectada, ventile ou use purificador",
     "Poor: >1200 #/cm3\nContagem alta, identifique fonte e melhore o ar",
-    "Atualizacao de firmware\nInstalando atualizacao...\nNao desligue o dispositivo.\nO dispositivo reiniciara automaticamente.",
+    "Instalando atualizacao...\nNao desligue o dispositivo.\nO dispositivo reiniciara automaticamente.",
     "ALTITUDE",
     "TOQUE\nPARA\nALTITUDE",
     "Pressao MSL\nPressao corrigida ao nivel do mar para comparar com o tempo.",

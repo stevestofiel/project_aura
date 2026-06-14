@@ -254,7 +254,46 @@ void UiController::update_co2_calib_texts() {
 }
 
 void UiController::update_fw_update_texts() {
-    if (objects.label_fw_update) safe_label_set_text(objects.label_fw_update, UiText::LabelFwUpdateScreen());
+    update_fw_update_ui();
+}
+
+void UiController::update_fw_update_ui() {
+    if (objects.label_fw_update_1) {
+        safe_label_set_text(objects.label_fw_update_1, "Firmware Update");
+    }
+    if (objects.label_btn_fw_update_allow) {
+        safe_label_set_text(objects.label_btn_fw_update_allow, "ALLOW\nUPDATE");
+    }
+    if (objects.label_btn_fw_update_cancel) {
+        safe_label_set_text(objects.label_btn_fw_update_cancel, "DENY\nUPDATE");
+    }
+
+    const bool confirm_pending =
+        firmware_update_screen_mode_ == WebUiBridge::FirmwareUpdateScreenMode::ConfirmPending;
+    set_visible(objects.btn_fw_update_allow, confirm_pending);
+    set_visible(objects.btn_fw_update_cancel, confirm_pending);
+
+    const char *body = UiText::LabelFwUpdateScreen();
+    switch (firmware_update_screen_mode_) {
+        case WebUiBridge::FirmwareUpdateScreenMode::ConfirmPending:
+            body = "Web upload is waiting.\nAllow firmware update?";
+            break;
+        case WebUiBridge::FirmwareUpdateScreenMode::ConfirmAllowed:
+            body = "Update allowed.\nStarting upload...";
+            break;
+        case WebUiBridge::FirmwareUpdateScreenMode::ConfirmDenied:
+            body = "Update denied.\nUpload cancelled.";
+            break;
+        case WebUiBridge::FirmwareUpdateScreenMode::Installing:
+        case WebUiBridge::FirmwareUpdateScreenMode::Hidden:
+        default:
+            body = UiText::LabelFwUpdateScreen();
+            break;
+    }
+
+    if (objects.label_fw_update) {
+        safe_label_set_text(objects.label_fw_update, body);
+    }
 }
 
 void UiController::update_diag_texts() {

@@ -941,6 +941,11 @@ typedef struct _objects_t {
     lv_obj_t *background_fw_update;
     lv_obj_t *card_fw_update;
     lv_obj_t *label_fw_update;
+    lv_obj_t *label_fw_update_1;
+    lv_obj_t *btn_fw_update_cancel;
+    lv_obj_t *label_btn_fw_update_cancel;
+    lv_obj_t *btn_fw_update_allow;
+    lv_obj_t *label_btn_fw_update_allow;
     lv_obj_t *background_diag;
     lv_obj_t *card_diag;
     lv_obj_t *system_logs;

@@ -471,11 +471,12 @@ void UiController::processWebUiBridgeCommands() {
             applyMqttSaveBridge(mqtt_save_update, this));
     }
 
-    bool firmware_update_screen_active = false;
-    if (!webUiBridge.consumePendingFirmwareUpdateScreen(firmware_update_screen_active)) {
+    WebUiBridge::FirmwareUpdateScreenMode firmware_update_screen_mode =
+        WebUiBridge::FirmwareUpdateScreenMode::Hidden;
+    if (!webUiBridge.consumePendingFirmwareUpdateScreen(firmware_update_screen_mode)) {
         return;
     }
-    webSetFirmwareUpdateScreen(firmware_update_screen_active);
+    webSetFirmwareUpdateScreen(firmware_update_screen_mode);
     publishWebUiSnapshot();
 }
 
@@ -1085,24 +1086,32 @@ void UiController::apply_pending_screen_now_from_web() {
     lvgl_port_unlock();
 }
 
-void UiController::webSetFirmwareUpdateScreen(bool active) {
+void UiController::webSetFirmwareUpdateScreen(WebUiBridge::FirmwareUpdateScreenMode mode) {
     auto is_restore_target = [](int screen_id) {
         return screen_id >= SCREEN_ID_PAGE_MAIN_PRO &&
                screen_id <= SCREEN_ID_PAGE_DAC_SETTINGS;
     };
 
-    if (active) {
-        int restore_screen = current_screen_id;
-        if (!is_restore_target(restore_screen) &&
-            pending_screen_id > 0 &&
-            pending_screen_id != SCREEN_ID_PAGE_FW_UPDATE) {
-            restore_screen = pending_screen_id;
+    if (mode != WebUiBridge::FirmwareUpdateScreenMode::Hidden) {
+        if (!firmware_update_screen_active_) {
+            int restore_screen = current_screen_id;
+            if (!is_restore_target(restore_screen) &&
+                pending_screen_id > 0 &&
+                pending_screen_id != SCREEN_ID_PAGE_FW_UPDATE) {
+                restore_screen = pending_screen_id;
+            }
+            if (!is_restore_target(restore_screen)) {
+                restore_screen = SCREEN_ID_PAGE_MAIN_PRO;
+            }
+            firmware_update_return_screen_id_ = restore_screen;
         }
-        if (!is_restore_target(restore_screen)) {
-            restore_screen = SCREEN_ID_PAGE_MAIN_PRO;
-        }
-        firmware_update_return_screen_id_ = restore_screen;
         firmware_update_screen_active_ = true;
+        firmware_update_screen_mode_ = mode;
+        firmware_update_autoclose_due_ms_ =
+            mode == WebUiBridge::FirmwareUpdateScreenMode::ConfirmDenied
+                ? millis() + 1500UL
+                : 0;
+        update_fw_update_ui();
         if (current_screen_id != SCREEN_ID_PAGE_FW_UPDATE) {
             pending_screen_id = SCREEN_ID_PAGE_FW_UPDATE;
             apply_pending_screen_now_from_web();
@@ -1114,6 +1123,8 @@ void UiController::webSetFirmwareUpdateScreen(bool active) {
     const bool fw_current = current_screen_id == SCREEN_ID_PAGE_FW_UPDATE;
     const bool fw_pending = pending_screen_id == SCREEN_ID_PAGE_FW_UPDATE;
     firmware_update_screen_active_ = false;
+    firmware_update_screen_mode_ = WebUiBridge::FirmwareUpdateScreenMode::Hidden;
+    firmware_update_autoclose_due_ms_ = 0;
 
     if (!fw_current && !fw_pending) {
         return;
@@ -1149,6 +1160,10 @@ void UiController::sync_display_threshold_revision() {
 void UiController::poll(uint32_t now) {
     refreshConnectivitySnapshot();
     processWebUiBridgeCommands();
+    if (firmware_update_autoclose_due_ms_ != 0 &&
+        static_cast<int32_t>(now - firmware_update_autoclose_due_ms_) >= 0) {
+        webSetFirmwareUpdateScreen(WebUiBridge::FirmwareUpdateScreenMode::Hidden);
+    }
     sync_display_threshold_revision();
     const bool co2_overlay_progress_active =
         co2_calib_overlay_mode_ == Co2CalibOverlayMode::CalibrationProgress ||

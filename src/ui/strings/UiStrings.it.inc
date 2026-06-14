@@ -326,7 +326,7 @@
     "Acceptable: >250-600 #/cm3\nIndoor normale, nessuna azione",
     "Uncomfortable: >600-1200 #/cm3\nSorgente rilevata, ventila o usa purificatore",
     "Poor: >1200 #/cm3\nConteggio alto, trova sorgente e migliora aria",
-    "Aggiornamento firmware\nInstallazione in corso...\nNon spegnere il dispositivo.\nIl dispositivo si riavviera automaticamente.",
+    "Installazione in corso...\nNon spegnere il dispositivo.\nIl dispositivo si riavviera automaticamente.",
     "ALTITUD.",
     "TOCCA\nPER\nALTIT.",
     "Pressione MSL\nPressione corretta al livello del mare per confronto meteo.",

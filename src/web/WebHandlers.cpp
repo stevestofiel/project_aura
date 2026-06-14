@@ -68,6 +68,14 @@ void WebHandlersBeginRestartShutdown() {
     WebHandlersSupport::beginRestartShutdown();
 }
 
+bool WebHandlersAllowOtaPhysicalConfirm() {
+    return WebHandlersSupport::allowOtaPhysicalConfirm();
+}
+
+bool WebHandlersDenyOtaPhysicalConfirm() {
+    return WebHandlersSupport::denyOtaPhysicalConfirm();
+}
+
 bool WebHandlersShouldPauseMqttConnect() {
     return WebHandlersSupport::shouldPauseMqttForTransfer();
 }

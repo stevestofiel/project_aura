@@ -28,6 +28,14 @@ constexpr const char kApiErrorOtaBootPendingVerifyJson[] =
     "{\"success\":false,"
     "\"error\":\"Firmware boot validation is still pending; wait until the device is stable before starting another OTA.\","
     "\"error_code\":\"OTA_BOOT_PENDING_VERIFY\"}";
+constexpr const char kOtaPhysicalConfirmRequiredError[] =
+    "Firmware update confirmation is required.";
+constexpr const char kOtaPhysicalConfirmDeniedError[] =
+    "Firmware update was denied on the device.";
+constexpr const char kOtaPhysicalConfirmExpiredError[] =
+    "Firmware update confirmation expired.";
+constexpr const char kOtaPhysicalConfirmMismatchError[] =
+    "Firmware update confirmation does not match this upload.";
 constexpr size_t kOtaAbortDrainMaxBytes = 32UL * 1024UL;
 constexpr uint32_t kOtaAbortDrainTimeoutMs = 1500;
 
@@ -39,6 +47,95 @@ void send_ota_busy_json(WebRequest &server) {
 void send_ota_boot_pending_verify_json(WebRequest &server) {
     WebResponseUtils::sendNoStoreHeaders(server);
     server.send(409, "application/json", kApiErrorOtaBootPendingVerifyJson);
+}
+
+bool parse_confirm_id_arg(WebRequest &server, uint32_t &confirm_id) {
+    size_t parsed = 0;
+    if (!server.hasArg("ota_confirm_id") ||
+        !WebTextUtils::parsePositiveSize(server.arg("ota_confirm_id"), parsed) ||
+        parsed > static_cast<size_t>(UINT32_MAX)) {
+        return false;
+    }
+    confirm_id = static_cast<uint32_t>(parsed);
+    return confirm_id != 0;
+}
+
+const char *prepare_confirm_error_code(OtaPhysicalConfirm::PrepareStatus status) {
+    switch (status) {
+        case OtaPhysicalConfirm::PrepareStatus::Required:
+            return "OTA_PHYSICAL_CONFIRM_REQUIRED";
+        case OtaPhysicalConfirm::PrepareStatus::Busy:
+            return "OTA_PHYSICAL_CONFIRM_BUSY";
+        case OtaPhysicalConfirm::PrepareStatus::Denied:
+            return "OTA_PHYSICAL_CONFIRM_DENIED";
+        case OtaPhysicalConfirm::PrepareStatus::Expired:
+            return "OTA_PHYSICAL_CONFIRM_EXPIRED";
+        case OtaPhysicalConfirm::PrepareStatus::Mismatch:
+            return "OTA_PHYSICAL_CONFIRM_MISMATCH";
+        case OtaPhysicalConfirm::PrepareStatus::Ready:
+        default:
+            return "OTA_PHYSICAL_CONFIRM_REQUIRED";
+    }
+}
+
+const char *prepare_confirm_error_message(OtaPhysicalConfirm::PrepareStatus status) {
+    switch (status) {
+        case OtaPhysicalConfirm::PrepareStatus::Required:
+            return "Confirm firmware update on the device screen.";
+        case OtaPhysicalConfirm::PrepareStatus::Busy:
+            return "Another firmware update confirmation is already pending on the device.";
+        case OtaPhysicalConfirm::PrepareStatus::Denied:
+            return "Firmware update was denied on the device.";
+        case OtaPhysicalConfirm::PrepareStatus::Expired:
+            return "Firmware update confirmation expired. Start the upload again.";
+        case OtaPhysicalConfirm::PrepareStatus::Mismatch:
+            return "Firmware update confirmation does not match this firmware file.";
+        case OtaPhysicalConfirm::PrepareStatus::Ready:
+        default:
+            return "Confirm firmware update on the device screen.";
+    }
+}
+
+int prepare_confirm_http_status(OtaPhysicalConfirm::PrepareStatus status) {
+    switch (status) {
+        case OtaPhysicalConfirm::PrepareStatus::Busy:
+        case OtaPhysicalConfirm::PrepareStatus::Mismatch:
+            return 409;
+        case OtaPhysicalConfirm::PrepareStatus::Required:
+        case OtaPhysicalConfirm::PrepareStatus::Denied:
+        case OtaPhysicalConfirm::PrepareStatus::Expired:
+        default:
+            return 403;
+    }
+}
+
+void send_invalid_confirm_id_json(WebRequest &server) {
+    WebResponseUtils::sendNoStoreHeaders(server);
+    server.send(400, "application/json",
+                "{\"success\":false,\"error_code\":\"INVALID_CONFIRM_ID\","
+                "\"error\":\"Invalid OTA confirmation id.\"}");
+}
+
+void send_ota_physical_confirm_prepare_json(
+    WebRequest &server,
+    const OtaPhysicalConfirm::PrepareDecision &decision) {
+    ArduinoJson::JsonDocument doc;
+    ArduinoJson::JsonObject root = doc.to<ArduinoJson::JsonObject>();
+    root["success"] = false;
+    root["error_code"] = prepare_confirm_error_code(decision.status);
+    root["error"] = prepare_confirm_error_message(decision.status);
+    root["confirm_id"] = decision.confirm_id;
+
+    if (decision.status == OtaPhysicalConfirm::PrepareStatus::Required) {
+        root["confirm_required"] = true;
+        root["retry_after_ms"] = decision.retry_after_ms;
+        root["confirm_timeout_ms"] = decision.confirm_timeout_ms;
+    }
+
+    String json;
+    serializeJson(doc, json);
+    WebResponseUtils::sendNoStoreHeaders(server);
+    server.send(prepare_confirm_http_status(decision.status), "application/json", json);
 }
 
 void send_ota_busy_upload_response(WebRequest &server) {
@@ -70,6 +167,58 @@ void send_ota_boot_pending_verify_upload_response(WebRequest &server) {
     }
     server.sendHeader("Connection", "close");
     server.send(409, "application/json", kApiErrorOtaBootPendingVerifyJson);
+    server.stopClient();
+}
+
+int upload_confirm_error_status(const String &error) {
+    if (error == kOtaPhysicalConfirmMismatchError) {
+        return 409;
+    }
+    return 403;
+}
+
+const char *upload_confirm_error_code(const String &error) {
+    if (error == kOtaPhysicalConfirmDeniedError) {
+        return "OTA_PHYSICAL_CONFIRM_DENIED";
+    }
+    if (error == kOtaPhysicalConfirmExpiredError) {
+        return "OTA_PHYSICAL_CONFIRM_EXPIRED";
+    }
+    if (error == kOtaPhysicalConfirmMismatchError) {
+        return "OTA_PHYSICAL_CONFIRM_MISMATCH";
+    }
+    return "OTA_PHYSICAL_CONFIRM_REQUIRED";
+}
+
+bool is_upload_confirm_error(const String &error) {
+    return error == kOtaPhysicalConfirmRequiredError ||
+           error == kOtaPhysicalConfirmDeniedError ||
+           error == kOtaPhysicalConfirmExpiredError ||
+           error == kOtaPhysicalConfirmMismatchError;
+}
+
+void send_ota_physical_confirm_upload_response(WebRequest &server, const String &error) {
+    WebResponseUtils::sendNoStoreHeaders(server);
+    const size_t pending_body_bytes = server.pendingRequestBodyBytes();
+    if (pending_body_bytes > 0) {
+        const size_t drained =
+            server.drainPendingRequestBody(kOtaAbortDrainMaxBytes,
+                                           kOtaAbortDrainTimeoutMs);
+        LOGI("OTA", "drained %u/%u pending request bytes before physical-confirm response",
+             static_cast<unsigned>(drained),
+             static_cast<unsigned>(pending_body_bytes));
+    }
+
+    ArduinoJson::JsonDocument doc;
+    ArduinoJson::JsonObject root = doc.to<ArduinoJson::JsonObject>();
+    root["success"] = false;
+    root["error_code"] = upload_confirm_error_code(error);
+    root["error"] = error;
+    String json;
+    serializeJson(doc, json);
+
+    server.sendHeader("Connection", "close");
+    server.send(upload_confirm_error_status(error), "application/json", json);
     server.stopClient();
 }
 
@@ -152,9 +301,25 @@ void fail_upload(WebOtaHandlers::Runtime &runtime, const String &error) {
     }
 }
 
+const char *upload_confirm_error_message(OtaPhysicalConfirm::ConsumeStatus status) {
+    switch (status) {
+        case OtaPhysicalConfirm::ConsumeStatus::Denied:
+            return kOtaPhysicalConfirmDeniedError;
+        case OtaPhysicalConfirm::ConsumeStatus::Expired:
+            return kOtaPhysicalConfirmExpiredError;
+        case OtaPhysicalConfirm::ConsumeStatus::Mismatch:
+            return kOtaPhysicalConfirmMismatchError;
+        case OtaPhysicalConfirm::ConsumeStatus::Missing:
+        case OtaPhysicalConfirm::ConsumeStatus::NotAllowed:
+        case OtaPhysicalConfirm::ConsumeStatus::Consumed:
+        default:
+            return kOtaPhysicalConfirmRequiredError;
+    }
+}
+
 void cleanup_after_update_response(WebOtaHandlers::Runtime &runtime, bool success) {
     if (!success && runtime.set_ui_screen) {
-        runtime.set_ui_screen(false);
+        runtime.set_ui_screen(WebUiBridge::FirmwareUpdateScreenMode::Hidden);
     }
     if (runtime.restore_wifi_power_save) {
         runtime.restore_wifi_power_save();
@@ -237,8 +402,41 @@ void handlePrepare(Runtime &runtime, bool ota_busy) {
                                            expected_size,
                                            upload_timeout_ms);
 
+    uint32_t confirm_id = 0;
+    const bool confirm_id_supplied = server.hasArg("ota_confirm_id");
+    const bool has_confirm_id = confirm_id_supplied && parse_confirm_id_arg(server, confirm_id);
+    if (result.success && confirm_id_supplied && !has_confirm_id) {
+        send_invalid_confirm_id_json(server);
+        return;
+    }
+
+    if (result.success && runtime.prepare_physical_confirm) {
+        const OtaPhysicalConfirm::PrepareDecision confirm_decision =
+            runtime.prepare_physical_confirm(expected_size, has_confirm_id, confirm_id);
+        if (confirm_decision.status != OtaPhysicalConfirm::PrepareStatus::Ready) {
+            if (confirm_decision.status == OtaPhysicalConfirm::PrepareStatus::Required &&
+                runtime.set_ui_screen) {
+                runtime.set_ui_screen(WebUiBridge::FirmwareUpdateScreenMode::ConfirmPending);
+            }
+            if (!has_confirm_id ||
+                confirm_decision.status != OtaPhysicalConfirm::PrepareStatus::Required) {
+                LOGI("OTA", "prepare physical confirm status=%s confirm_id=%u expected=%u",
+                     OtaPhysicalConfirm::prepareStatusText(confirm_decision.status),
+                     static_cast<unsigned>(confirm_decision.confirm_id),
+                     static_cast<unsigned>(expected_size));
+            }
+            send_ota_physical_confirm_prepare_json(server, confirm_decision);
+            return;
+        }
+        confirm_id = confirm_decision.confirm_id;
+    }
+
     ArduinoJson::JsonDocument doc;
-    WebOtaApiUtils::fillPrepareJson(doc.to<ArduinoJson::JsonObject>(), result);
+    ArduinoJson::JsonObject root = doc.to<ArduinoJson::JsonObject>();
+    WebOtaApiUtils::fillPrepareJson(root, result);
+    if (result.success && confirm_id != 0) {
+        root["confirm_id"] = confirm_id;
+    }
     String json;
     serializeJson(doc, json);
 
@@ -285,6 +483,27 @@ void handleUpload(Runtime &runtime, bool ota_busy) {
             return;
         }
 
+        uint32_t confirm_id = 0;
+        const bool has_confirm_id = parse_confirm_id_arg(server, confirm_id);
+        if (runtime.consume_physical_confirm) {
+            const OtaPhysicalConfirm::ConsumeDecision confirm_decision =
+                runtime.consume_physical_confirm(expected_size, has_confirm_id, confirm_id);
+            if (confirm_decision.status != OtaPhysicalConfirm::ConsumeStatus::Consumed) {
+                const uint32_t now_ms = millis();
+                runtime.ota_state.beginUpload(now_ms);
+                fail_upload(runtime, upload_confirm_error_message(confirm_decision.status));
+                server.rejectUpload();
+                LOGW("OTA", "reject upload start physical_confirm=%s confirm_id=%u expected=%u",
+                     OtaPhysicalConfirm::consumeStatusText(confirm_decision.status),
+                     static_cast<unsigned>(confirm_decision.confirm_id),
+                     static_cast<unsigned>(expected_size));
+                return;
+            }
+            LOGI("OTA", "physical confirm consumed (confirm_id=%u, expected=%u)",
+                 static_cast<unsigned>(confirm_decision.confirm_id),
+                 static_cast<unsigned>(expected_size));
+        }
+
         if (runtime.cancel_preflight_ui) {
             runtime.cancel_preflight_ui();
         }
@@ -305,7 +524,7 @@ void handleUpload(Runtime &runtime, bool ota_busy) {
             runtime.context.wifi_stop_scan();
         }
         if (runtime.set_ui_screen) {
-            runtime.set_ui_screen(true);
+            runtime.set_ui_screen(WebUiBridge::FirmwareUpdateScreenMode::Installing);
         }
 
         const esp_partition_t *target_partition = esp_ota_get_next_update_partition(nullptr);
@@ -469,6 +688,14 @@ void handleUpdate(Runtime &runtime, bool ota_busy) {
         const WebOtaSnapshot rejected_ota = runtime.ota_state.snapshot();
         if (rejected_ota.hasError() && rejected_ota.error == kOtaBootPendingVerifyError) {
             send_ota_boot_pending_verify_upload_response(server);
+            if (runtime.cancel_preflight_ui) {
+                runtime.cancel_preflight_ui();
+            }
+            cleanup_after_update_response(runtime, false);
+            return;
+        }
+        if (rejected_ota.hasError() && is_upload_confirm_error(rejected_ota.error)) {
+            send_ota_physical_confirm_upload_response(server, rejected_ota.error);
             if (runtime.cancel_preflight_ui) {
                 runtime.cancel_preflight_ui();
             }

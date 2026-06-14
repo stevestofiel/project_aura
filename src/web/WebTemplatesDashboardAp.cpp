@@ -1698,6 +1698,7 @@ let historyCache = null;
 let refreshBusy = false;
 let refreshTimer = null;
 let otaUploadInFlight = false;
+let otaAwaitingPhysicalConfirm = false;
 let otaAwaitingDeviceOutcome = false;
 let otaRestartPending = false;
 let otaRecoveryTimer = null;
@@ -1877,7 +1878,10 @@ function updateOtaPrecheck(network) {
 
   let cls = 'warn';
   let text = 'Waiting for live device state before OTA.';
-  if (otaUploadInFlight) {
+  if (otaAwaitingPhysicalConfirm) {
+    cls = 'warn';
+    text = 'Waiting for firmware update confirmation on the device.';
+  } else if (otaUploadInFlight) {
     cls = 'warn';
     text = 'OTA upload in progress. Live state checks are paused.';
   } else if (otaAwaitingDeviceOutcome) {
@@ -2047,13 +2051,27 @@ async function postJson(url, payload) {
   return json;
 }
 
-async function prepareOtaUpload(fileSizeBytes) {
+function makeOtaHttpError(response, json) {
+  const err = new Error((json && json.error) || ('HTTP ' + response.status));
+  err.status = response.status;
+  err.code = json && typeof json.error_code === 'string' ? json.error_code : '';
+  err.confirmId = json && isNum(json.confirm_id) ? json.confirm_id : null;
+  err.retryAfterMs = json && isNum(json.retry_after_ms) ? json.retry_after_ms : 1000;
+  err.confirmTimeoutMs = json && isNum(json.confirm_timeout_ms) ? json.confirm_timeout_ms : 300000;
+  err.payload = json;
+  return err;
+}
+
+async function prepareOtaUpload(fileSizeBytes, confirmId) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), OTA_PREPARE_TIMEOUT_MS);
   try {
     const params = new URLSearchParams();
     if (isNum(fileSizeBytes) && fileSizeBytes > 0) {
       params.set('ota_size', String(Math.trunc(fileSizeBytes)));
+    }
+    if (isNum(confirmId) && confirmId > 0) {
+      params.set('ota_confirm_id', String(Math.trunc(confirmId)));
     }
     const url = params.toString() ? ('/api/ota/prepare?' + params.toString()) : '/api/ota/prepare';
     const r = await fetch(url, {
@@ -2063,7 +2081,7 @@ async function prepareOtaUpload(fileSizeBytes) {
     });
     let json = null;
     try { json = await r.json(); } catch (_) {}
-    if (!r.ok) throw new Error((json && json.error) || ('HTTP ' + r.status));
+    if (!r.ok) throw makeOtaHttpError(r, json);
     return json;
   } catch (err) {
     if (err && err.name === 'AbortError') {
@@ -2073,6 +2091,51 @@ async function prepareOtaUpload(fileSizeBytes) {
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function sleepMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForOtaPhysicalConfirm(fileSizeBytes, firstError, statusEl) {
+  const confirmId = firstError && isNum(firstError.confirmId) ? firstError.confirmId : null;
+  if (!confirmId) {
+    throw firstError || new Error('Device requested confirmation but did not return a confirmation id.');
+  }
+
+  const timeoutMs = Math.max(1000, firstError.confirmTimeoutMs || 300000);
+  const startedAt = Date.now();
+  let retryMs = Math.max(500, Math.min(5000, firstError.retryAfterMs || 1000));
+
+  otaAwaitingPhysicalConfirm = true;
+  updateOtaPrecheck(safeStateNetwork());
+  statusEl.textContent = 'Confirm update on the device...';
+  statusEl.className = 'ota-status warn';
+
+  while (Date.now() - startedAt < timeoutMs) {
+    await sleepMs(retryMs);
+    try {
+      return await prepareOtaUpload(fileSizeBytes, confirmId);
+    } catch (err) {
+      const code = err && err.code ? err.code : '';
+      if (code === 'OTA_PHYSICAL_CONFIRM_REQUIRED') {
+        retryMs = Math.max(500, Math.min(5000, err.retryAfterMs || retryMs));
+        continue;
+      }
+      if (code === 'OTA_PHYSICAL_CONFIRM_DENIED') {
+        throw new Error('Firmware update was denied on the device.');
+      }
+      if (code === 'OTA_PHYSICAL_CONFIRM_EXPIRED') {
+        throw new Error('Firmware update confirmation expired. Start the upload again.');
+      }
+      if (code === 'OTA_PHYSICAL_CONFIRM_BUSY') {
+        throw new Error('Another firmware update confirmation is already pending on the device.');
+      }
+      throw err;
+    }
+  }
+
+  throw new Error('Firmware update confirmation timed out.');
 }
 
 function cacheStatePayload(payload) {
@@ -2761,19 +2824,44 @@ function initOtaUI() {
     stopOtaRecoveryWatcher();
     otaReconnectGraceUntilMs = 0;
 
+    otaUploadInFlight = true;
+    otaAwaitingPhysicalConfirm = false;
     uploadBtn.disabled = true;
+    fileInput.disabled = true;
     statusEl.textContent = 'Preparing device for upload...';
     statusEl.className = 'ota-status';
     let prepareCfg = null;
     try {
       prepareCfg = await prepareOtaUpload(file.size);
     } catch (err) {
-      uploadBtn.disabled = false;
-      statusEl.textContent =
-        (err && err.message) ? err.message : 'Failed to prepare device for upload.';
-      statusEl.className = 'ota-status err';
-      return;
+      if (err && err.code === 'OTA_PHYSICAL_CONFIRM_REQUIRED') {
+        try {
+          prepareCfg = await waitForOtaPhysicalConfirm(file.size, err, statusEl);
+        } catch (waitErr) {
+          otaAwaitingPhysicalConfirm = false;
+          otaUploadInFlight = false;
+          uploadBtn.disabled = false;
+          fileInput.disabled = false;
+          statusEl.textContent =
+            (waitErr && waitErr.message) ? waitErr.message : 'Firmware update confirmation failed.';
+          statusEl.className = 'ota-status err';
+          updateNetStatusBanner();
+          updateOtaPrecheck(safeStateNetwork());
+          return;
+        }
+      } else {
+        otaUploadInFlight = false;
+        uploadBtn.disabled = false;
+        fileInput.disabled = false;
+        statusEl.textContent =
+          (err && err.message) ? err.message : 'Failed to prepare device for upload.';
+        statusEl.className = 'ota-status err';
+        updateNetStatusBanner();
+        updateOtaPrecheck(safeStateNetwork());
+        return;
+      }
     }
+    otaAwaitingPhysicalConfirm = false;
 
     otaUploadInFlight = true;
     statusEl.textContent = 'Uploading firmware…';
@@ -2782,6 +2870,9 @@ function initOtaUI() {
 
     const form = new FormData();
     form.append('ota_size', String(file.size));
+    if (prepareCfg && isNum(prepareCfg.confirm_id) && prepareCfg.confirm_id > 0) {
+      form.append('ota_confirm_id', String(Math.trunc(prepareCfg.confirm_id)));
+    }
     form.append('firmware', file, file.name);
 
     const xhr = new XMLHttpRequest();
@@ -2800,11 +2891,13 @@ function initOtaUI() {
 
     const finishUploadStatus = (message, cls) => {
       otaUploadInFlight = false;
+      otaAwaitingPhysicalConfirm = false;
       otaAwaitingDeviceOutcome = false;
       otaRestartPending = false;
       otaReconnectGraceUntilMs = 0;
       stopOtaRecoveryWatcher();
       uploadBtn.disabled = false;
+      fileInput.disabled = false;
       statusEl.textContent = message;
       statusEl.className = 'ota-status ' + (cls || 'err');
       updateNetStatusBanner();
@@ -2813,6 +2906,7 @@ function initOtaUI() {
 
     const finishUploadSuccess = message => {
       otaUploadInFlight = false;
+      otaAwaitingPhysicalConfirm = false;
       otaAwaitingDeviceOutcome = false;
       otaRestartPending = true;
       otaReconnectGraceUntilMs = Date.now() + OTA_RECONNECT_GRACE_MS;

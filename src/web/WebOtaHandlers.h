@@ -10,8 +10,10 @@
 #include <stdint.h>
 
 #include "web/OtaDeferredRestart.h"
+#include "web/OtaPhysicalConfirm.h"
 #include "web/WebContext.h"
 #include "web/WebOtaState.h"
+#include "web/WebUiBridge.h"
 
 namespace WebOtaHandlers {
 
@@ -25,8 +27,14 @@ struct Runtime {
     void (*restore_wifi_power_save)() = nullptr;
     void (*arm_preflight_ui)() = nullptr;
     void (*cancel_preflight_ui)() = nullptr;
-    void (*set_ui_screen)(bool active) = nullptr;
+    void (*set_ui_screen)(WebUiBridge::FirmwareUpdateScreenMode mode) = nullptr;
     void (*set_error)(const String &error) = nullptr;
+    OtaPhysicalConfirm::PrepareDecision (*prepare_physical_confirm)(size_t image_size_bytes,
+                                                                    bool has_confirm_id,
+                                                                    uint32_t confirm_id) = nullptr;
+    OtaPhysicalConfirm::ConsumeDecision (*consume_physical_confirm)(size_t image_size_bytes,
+                                                                   bool has_confirm_id,
+                                                                   uint32_t confirm_id) = nullptr;
 };
 
 void handlePrepare(Runtime &runtime, bool ota_busy);

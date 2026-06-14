@@ -220,6 +220,8 @@ void UiEventBinder::bindAvailableEvents(UiController &owner, int screen_id) {
         {objects.btn_backlight_wake_minutes_plus, UiController::on_backlight_wake_minutes_plus_event_cb, LV_EVENT_CLICKED},
         {objects.btn_restart, UiController::on_restart_event_cb, LV_EVENT_CLICKED},
         {objects.btn_factory_reset, UiController::on_factory_reset_event_cb, LV_EVENT_CLICKED},
+        {objects.btn_fw_update_allow, UiController::on_fw_update_allow_event_cb, LV_EVENT_CLICKED},
+        {objects.btn_fw_update_cancel, UiController::on_fw_update_deny_event_cb, LV_EVENT_CLICKED},
         {objects.btn_voc_reset, UiController::on_voc_reset_event_cb, LV_EVENT_CLICKED},
         {objects.btn_confirm_ok, UiController::on_confirm_ok_event_cb, LV_EVENT_CLICKED},
         {objects.btn_confirm_cancel, UiController::on_confirm_cancel_event_cb, LV_EVENT_CLICKED},

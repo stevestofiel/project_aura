@@ -159,6 +159,8 @@ void UiController::on_set_date_year_minus_event_cb(lv_event_t *e) { if (instance
 void UiController::on_set_date_year_plus_event_cb(lv_event_t *e) { if (instance_) instance_->on_set_date_year_plus_event(e); }
 void UiController::on_restart_event_cb(lv_event_t *e) { if (instance_) instance_->on_restart_event(e); }
 void UiController::on_factory_reset_event_cb(lv_event_t *e) { if (instance_) instance_->on_factory_reset_event(e); }
+void UiController::on_fw_update_allow_event_cb(lv_event_t *e) { if (instance_) instance_->on_fw_update_allow_event(e); }
+void UiController::on_fw_update_deny_event_cb(lv_event_t *e) { if (instance_) instance_->on_fw_update_deny_event(e); }
 void UiController::on_voc_reset_event_cb(lv_event_t *e) { if (instance_) instance_->on_voc_reset_event(e); }
 void UiController::on_card_temp_event_cb(lv_event_t *e) { if (instance_) instance_->on_card_temp_event(e); }
 void UiController::on_card_voc_event_cb(lv_event_t *e) { if (instance_) instance_->on_card_voc_event(e); }
@@ -844,6 +846,30 @@ void UiController::on_factory_reset_event(lv_event_t *e) {
         return;
     }
     confirm_show(CONFIRM_FACTORY_RESET);
+}
+
+void UiController::on_fw_update_allow_event(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+    if (WebHandlersAllowOtaPhysicalConfirm()) {
+        firmware_update_screen_mode_ = WebUiBridge::FirmwareUpdateScreenMode::ConfirmAllowed;
+        firmware_update_autoclose_due_ms_ = 0;
+        update_fw_update_ui();
+        data_dirty = true;
+    }
+}
+
+void UiController::on_fw_update_deny_event(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+    if (WebHandlersDenyOtaPhysicalConfirm()) {
+        firmware_update_screen_mode_ = WebUiBridge::FirmwareUpdateScreenMode::ConfirmDenied;
+        firmware_update_autoclose_due_ms_ = millis() + 1500UL;
+        update_fw_update_ui();
+        data_dirty = true;
+    }
 }
 
 void UiController::on_voc_reset_event(lv_event_t *e) {

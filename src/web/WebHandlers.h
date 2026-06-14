@@ -47,3 +47,5 @@ void settings_handle_update();
 void ota_handle_prepare();
 void ota_handle_update();
 void ota_handle_upload();
+bool WebHandlersAllowOtaPhysicalConfirm();
+bool WebHandlersDenyOtaPhysicalConfirm();

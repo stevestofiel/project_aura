@@ -87,7 +87,7 @@ public:
     bool webSetNtpServer(const String &server);
     bool webSetUnitsC(bool units_c);
     bool webSetOffsets(float temp_offset_c, float hum_offset_pct);
-    void webSetFirmwareUpdateScreen(bool active);
+    void webSetFirmwareUpdateScreen(WebUiBridge::FirmwareUpdateScreenMode mode);
     void webRequestRestart();
 
 private:
@@ -462,6 +462,7 @@ private:
     void update_backlight_texts();
     void update_co2_calib_texts();
     void update_fw_update_texts();
+    void update_fw_update_ui();
     void update_diag_texts();
     void update_boot_diag_texts();
     void update_dac_ui(uint32_t now_ms);
@@ -639,6 +640,8 @@ private:
     void on_set_date_year_plus_event(lv_event_t *e);
     void on_restart_event(lv_event_t *e);
     void on_factory_reset_event(lv_event_t *e);
+    void on_fw_update_allow_event(lv_event_t *e);
+    void on_fw_update_deny_event(lv_event_t *e);
     void on_voc_reset_event(lv_event_t *e);
     void on_card_temp_event(lv_event_t *e);
     void on_card_voc_event(lv_event_t *e);
@@ -815,6 +818,8 @@ private:
     static void on_set_date_year_plus_event_cb(lv_event_t *e);
     static void on_restart_event_cb(lv_event_t *e);
     static void on_factory_reset_event_cb(lv_event_t *e);
+    static void on_fw_update_allow_event_cb(lv_event_t *e);
+    static void on_fw_update_deny_event_cb(lv_event_t *e);
     static void on_voc_reset_event_cb(lv_event_t *e);
     static void on_card_temp_event_cb(lv_event_t *e);
     static void on_card_voc_event_cb(lv_event_t *e);
@@ -1030,6 +1035,9 @@ private:
     bool lvgl_diag_stall_active = false;
     uint32_t lvgl_diag_stall_since_ms = 0;
     bool firmware_update_screen_active_ = false;
+    WebUiBridge::FirmwareUpdateScreenMode firmware_update_screen_mode_ =
+        WebUiBridge::FirmwareUpdateScreenMode::Hidden;
+    uint32_t firmware_update_autoclose_due_ms_ = 0;
     int firmware_update_return_screen_id_ = 0;
     UiDeferredUnload deferred_unload_;
     bool boot_logo_active = false;

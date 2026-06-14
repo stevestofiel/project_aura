@@ -15,6 +15,7 @@
 #include "core/SafeRestart.h"
 #include "core/Watchdog.h"
 #include "lvgl_v8_port.h"
+#include "web/OtaPhysicalConfirm.h"
 #include "web/WebOtaState.h"
 #include "web/WebUiBridge.h"
 
@@ -95,15 +96,15 @@ void ota_reset_state() {
     g_ota_state.reset();
 }
 
-void ota_set_ui_screen(bool active) {
+void ota_set_ui_screen(WebUiBridge::FirmwareUpdateScreenMode mode) {
     if (!g_ctx || !g_ctx->web_ui_bridge) {
         return;
     }
-    g_ctx->web_ui_bridge->requestFirmwareUpdateScreen(active);
+    g_ctx->web_ui_bridge->requestFirmwareUpdateScreen(mode);
 }
 
 void ota_arm_preflight_ui() {
-    ota_set_ui_screen(true);
+    ota_set_ui_screen(WebUiBridge::FirmwareUpdateScreenMode::Installing);
     g_ota_preflight_ui_due_ms.store(millis() + kOtaPreflightUiLeaseMs, std::memory_order_release);
 }
 
@@ -115,6 +116,18 @@ void ota_restore_wifi_power_save();
 
 void ota_set_error(const String &error) {
     g_ota_state.setErrorOnce(error, millis());
+}
+
+OtaPhysicalConfirm::PrepareDecision ota_prepare_physical_confirm(size_t expected_size,
+                                                                 bool has_confirm_id,
+                                                                 uint32_t confirm_id) {
+    return OtaPhysicalConfirm::prepare(expected_size, has_confirm_id, confirm_id);
+}
+
+OtaPhysicalConfirm::ConsumeDecision ota_consume_physical_confirm(size_t expected_size,
+                                                                bool has_confirm_id,
+                                                                uint32_t confirm_id) {
+    return OtaPhysicalConfirm::consumeForUpload(expected_size, has_confirm_id, confirm_id);
 }
 
 void ota_disable_wifi_power_save_for_upload() {
@@ -185,6 +198,7 @@ void init(WebHandlerContext *context) {
     g_restart_in_progress.store(false, std::memory_order_release);
     ota_cancel_preflight_ui();
     ota_reset_state();
+    OtaPhysicalConfirm::reset();
 }
 
 WebHandlerContext *context() {
@@ -235,8 +249,12 @@ void pollDeferred() {
     if (ota_preflight_ui_due_ms != 0 &&
         static_cast<int32_t>(now_ms - ota_preflight_ui_due_ms) >= 0 &&
         !isOtaBusy()) {
-        ota_set_ui_screen(false);
+        ota_set_ui_screen(WebUiBridge::FirmwareUpdateScreenMode::Hidden);
         ota_cancel_preflight_ui();
+    }
+
+    if (OtaPhysicalConfirm::poll() && !isOtaBusy()) {
+        ota_set_ui_screen(WebUiBridge::FirmwareUpdateScreenMode::Hidden);
     }
 
     const WebDeferredActionsDue due = g_deferred_actions.pollDue(now_ms);
@@ -251,6 +269,40 @@ void pollDeferred() {
 
     g_restart_controller.poll(now_ms);
     g_ota_state.poll(now_ms);
+}
+
+bool allowOtaPhysicalConfirm() {
+    const bool allowed = OtaPhysicalConfirm::allowCurrent();
+    if (allowed) {
+        ota_set_ui_screen(WebUiBridge::FirmwareUpdateScreenMode::ConfirmAllowed);
+        const OtaPhysicalConfirm::Snapshot snapshot = OtaPhysicalConfirm::snapshot();
+        LOGI("OTA", "physical confirm allowed (confirm_id=%u, expected=%u)",
+             static_cast<unsigned>(snapshot.confirm_id),
+             static_cast<unsigned>(snapshot.expected_size));
+    } else {
+        const OtaPhysicalConfirm::Snapshot snapshot = OtaPhysicalConfirm::snapshot();
+        LOGW("OTA", "physical confirm allow ignored (state=%s, confirm_id=%u)",
+             OtaPhysicalConfirm::stateText(snapshot.state),
+             static_cast<unsigned>(snapshot.confirm_id));
+    }
+    return allowed;
+}
+
+bool denyOtaPhysicalConfirm() {
+    const bool denied = OtaPhysicalConfirm::denyCurrent();
+    if (denied) {
+        ota_set_ui_screen(WebUiBridge::FirmwareUpdateScreenMode::ConfirmDenied);
+        const OtaPhysicalConfirm::Snapshot snapshot = OtaPhysicalConfirm::snapshot();
+        LOGI("OTA", "physical confirm denied (confirm_id=%u, expected=%u)",
+             static_cast<unsigned>(snapshot.confirm_id),
+             static_cast<unsigned>(snapshot.expected_size));
+    } else {
+        const OtaPhysicalConfirm::Snapshot snapshot = OtaPhysicalConfirm::snapshot();
+        LOGW("OTA", "physical confirm deny ignored (state=%s, confirm_id=%u)",
+             OtaPhysicalConfirm::stateText(snapshot.state),
+             static_cast<unsigned>(snapshot.confirm_id));
+    }
+    return denied;
 }
 
 WebOtaSnapshot otaSnapshot() {
@@ -292,6 +344,8 @@ WebOtaHandlers::Runtime otaRuntime(WebHandlerContext &context) {
         ota_cancel_preflight_ui,
         ota_set_ui_screen,
         ota_set_error,
+        ota_prepare_physical_confirm,
+        ota_consume_physical_confirm,
     };
 }
 

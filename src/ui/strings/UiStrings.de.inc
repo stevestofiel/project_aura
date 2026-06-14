@@ -326,7 +326,7 @@
     "Akzeptabel: >250-600 #/cm3\nNormaler Innenraum, keine Aktion nötig",
     "Unangenehm: >600-1200 #/cm3\nQuelle erkannt, lüften oder Reiniger nutzen",
     "Schlecht: >1200 #/cm3\nHoher Wert, Quelle finden und Luft verbessern",
-    "Firmware-Update\nUpdate wird installiert...\nGerät nicht ausschalten.\nGerät startet automatisch neu.",
+    "Update wird installiert...\nGerät nicht ausschalten.\nGerät startet automatisch neu.",
     "SET HOEHE",
     "TIPPEN\nFUER\nHOEHE",
     "MSL-Druck\nAuf Meereshoehe korrigierter Druck fuer Wettervergleich.",
