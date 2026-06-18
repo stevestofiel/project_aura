@@ -21,6 +21,7 @@ struct SensorData {
     int voc_index = 0;
     int nox_index = 0;
     uint8_t optional_gas_type = 0;
+    uint8_t optional_gas_ppm_decimals = 1;
     bool temp_valid = false;
     bool hum_valid = false;
     bool pm_valid = false;

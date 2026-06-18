@@ -117,7 +117,25 @@ void test_optional_gas_detects_o3_after_warmup() {
                       static_cast<int>(sensor.optionalGasType()));
     TEST_ASSERT_TRUE(sensor.isDataValid());
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 4.2f, sensor.ppm());
+    TEST_ASSERT_EQUAL_UINT8(1, sensor.ppmDecimals());
     TEST_ASSERT_EQUAL_STRING("O3", sensor.optionalGasLabel());
+}
+
+void test_optional_gas_preserves_dfrobot_decimal_places() {
+    I2cMock::setDevicePresent(Config::DFR_OPTIONAL_GAS_ADDR, true);
+    setPassiveModeAck();
+
+    DfrOptionalGasSensor sensor;
+    TEST_ASSERT_TRUE(sensor.begin());
+    TEST_ASSERT_TRUE(sensor.start());
+
+    setReadGasResponse(23, Config::DFR_GAS_TYPE_O3, 2);
+    setMillis(Config::DFR_GAS_WARMUP_MS + Config::DFR_GAS_POLL_MS);
+    sensor.poll();
+
+    TEST_ASSERT_TRUE(sensor.isDataValid());
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.23f, sensor.ppm());
+    TEST_ASSERT_EQUAL_UINT8(2, sensor.ppmDecimals());
 }
 
 void test_optional_gas_detects_h2s_after_warmup() {
@@ -331,6 +349,7 @@ int main(int, char **) {
     RUN_TEST(test_optional_gas_detects_nh3_after_warmup);
     RUN_TEST(test_optional_gas_detects_so2_after_warmup);
     RUN_TEST(test_optional_gas_detects_o3_after_warmup);
+    RUN_TEST(test_optional_gas_preserves_dfrobot_decimal_places);
     RUN_TEST(test_optional_gas_detects_h2s_after_warmup);
     RUN_TEST(test_optional_gas_detects_no2_after_warmup);
     RUN_TEST(test_optional_gas_rejects_unsupported_gas_type);

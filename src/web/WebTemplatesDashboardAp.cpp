@@ -832,6 +832,13 @@ function metricStatus(value, thr, round) {
 }
 
 function fmtVal(v, d) { return isNum(v) ? Number(v).toFixed(d) : 'N/A'; }
+function displayDigitsForValue(key, v, d) {
+  if (key === 'optional_gas' && d === 2 && isNum(v) && v >= 1) return 1;
+  return d;
+}
+function fmtValForKey(key, v, d) {
+  return isNum(v) ? Number(v).toFixed(displayDigitsForValue(key, v, d)) : 'N/A';
+}
 function fmtSigned(v, d) {
   if (!isNum(v)) return 'N/A';
   return (v > 0 ? '+' : '') + Number(v).toFixed(d);
@@ -1033,7 +1040,7 @@ function buildChartSvg(data, keys, colors, height, options) {
     if (showPoints) {
       pts.forEach(p => {
         if (!isNum(p.v) || !isNum(p.y)) return;
-        const valueText = Number(p.v).toFixed(digits);
+        const valueText = fmtValForKey(k, p.v, digits);
         pointsHtml += `<circle class="chart-point" data-name="${esc(name)}" data-time="${esc(p.t)}" data-value="${esc(valueText)}" data-unit="${esc(unit)}" data-color="${esc(c)}" data-x="${p.x.toFixed(2)}" data-y="${p.y.toFixed(2)}" cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="3.0" fill="transparent" stroke="transparent" stroke-width="0"></circle>`;
       });
     }
@@ -1259,6 +1266,16 @@ const OPTIONAL_GAS_PROFILES = {
   O3:  { label:'O3',  unit:'ppm', max:0.5,  thr:{ good:0.05, moderate:0.10, bad:0.5 }, digits:1 },
 };
 
+function optionalGasDigits(sensors, profile, fallback) {
+  const raw = sensors ? sensors.optional_gas_ppm_decimals : undefined;
+  if (raw !== null && raw !== undefined) {
+    const d = Number(raw);
+    if (Number.isInteger(d) && d >= 0 && d <= 2) return d;
+  }
+  if (profile && Number.isInteger(profile.digits)) return profile.digits;
+  return Number.isInteger(fallback) ? fallback : 1;
+}
+
 function buildGasMetrics(sensors) {
   const s = sensors || {};
   const metrics = GAS_METRICS.filter(m => {
@@ -1282,7 +1299,7 @@ function buildGasMetrics(sensors) {
       unit: profile.unit,
       max: profile.max,
       thr: profile.thr,
-      digits: profile.digits,
+      digits: optionalGasDigits(s, profile, 1),
     });
   }
 
@@ -1305,7 +1322,7 @@ function renderGasGrid(sensors) {
           <span class="gas-unit">${esc(m.unit)}</span>
         </div>
         <div class="gas-val-row">
-          <span class="gas-val" style="color:${color}">${fmtVal(v, m.digits)}</span>
+          <span class="gas-val" style="color:${color}">${fmtValForKey(m.key, v, m.digits)}</span>
           ${pillHtml(status, true)}
         </div>
         <div class="gas-progress"><div class="gas-bar" style="width:${bar}%;background:${color};"></div></div>
@@ -1421,7 +1438,7 @@ function chartCardForState(card) {
         ...line,
         name: profile.label,
         unit: profile.unit || line.unit || 'ppm',
-        digits: Number.isInteger(profile.digits) ? profile.digits : line.digits,
+        digits: optionalGasDigits(sensors, profile, line.digits),
       };
     }),
   };
@@ -1569,6 +1586,7 @@ function renderCharts(payload) {
       const rawLatest = isNum(liveVal) ? liveVal : apiLatest;
       const v = convertChartValueByKey(line.key, rawLatest, settings.tempUnit);
       return {
+        key: line.key,
         value: v,
         digits: lineDigits[idx],
         color: lineColors[idx],
@@ -1591,7 +1609,7 @@ function renderCharts(payload) {
         <span class="chart-name">${esc(cardTitle)}</span>
         <div class="chart-latest-row">
           ${latestItems.map(item =>
-            `<span class="chart-latest-item" style="color:${item.color}">${isNum(item.value) ? Number(item.value).toFixed(item.digits) : '-'}</span>`
+            `<span class="chart-latest-item" style="color:${item.color}">${isNum(item.value) ? fmtValForKey(item.key, item.value, item.digits) : '-'}</span>`
           ).join('')}
         </div>
       </div>

@@ -19,6 +19,7 @@ struct DfrOptionalGasSensorTestState {
     bool warmup = false;
     bool invalidate_called = false;
     float ppm = 0.0f;
+    uint8_t ppm_decimals = 1;
     uint32_t last_data_ms = 0;
     OptionalGasType gas_type = OptionalGasType::None;
 };
@@ -34,6 +35,7 @@ public:
         if (!state().present) {
             state().data_valid = false;
             state().ppm = 0.0f;
+            state().ppm_decimals = 1;
             state().warmup = false;
             state().gas_type = OptionalGasType::None;
         }
@@ -44,6 +46,7 @@ public:
     bool isDataValid() const { return state().data_valid; }
     bool isWarmupActive() const { return state().warmup; }
     float ppm() const { return state().ppm; }
+    uint8_t ppmDecimals() const { return state().ppm_decimals; }
     OptionalGasType optionalGasType() const { return state().gas_type; }
     const char *optionalGasLabel() const { return optionalGasLabel(state().gas_type); }
     const char *label() const { return "DFR Optional Gas"; }

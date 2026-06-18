@@ -62,7 +62,11 @@ const char *get_optional_gas_label(const SensorData &data) {
 void format_optional_gas_value(const SensorData &data, char *buf, size_t buf_size) {
     const OptionalGasType type = get_optional_gas_type(data);
     const UiOptionalGasProfile::Profile &profile = UiOptionalGasProfile::forType(type);
-    UiOptionalGasProfile::formatValue(profile, get_optional_gas_ppm_value(data), buf, buf_size);
+    UiOptionalGasProfile::formatValue(profile,
+                                      get_optional_gas_ppm_value(data),
+                                      data.optional_gas_ppm_decimals,
+                                      buf,
+                                      buf_size);
 }
 
 float get_co_ppm_value(const SensorData &data) {

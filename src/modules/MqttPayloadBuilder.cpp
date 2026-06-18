@@ -398,6 +398,14 @@ const char *optional_gas_type_text(const SensorData &data) {
                : nullptr;
 }
 
+int optional_gas_ppm_decimals(const SensorData &data, float value) {
+    const int decimals = data.optional_gas_ppm_decimals <= 2 ? data.optional_gas_ppm_decimals : 1;
+    if (decimals == 2 && isfinite(value) && value >= 1.0f) {
+        return 1;
+    }
+    return decimals;
+}
+
 } // namespace
 
 String buildDiscoveryEntityObjectId(const String &base_topic,
@@ -701,14 +709,16 @@ size_t buildStatePayload(char *out,
     format_fan_timer_remaining(fan_timer_remaining_text,
                                sizeof(fan_timer_remaining_text),
                                fan_timer_remaining);
+    const int optional_decimals = optional_gas_ppm_decimals(data, data.optional_gas_ppm);
+    const int nh3_decimals = optional_gas_ppm_decimals(data, data.nh3_ppm);
     if (!add_float("co", co_valid, data.co_ppm, 1) ||
-        !add_float("optional_gas", optional_gas_valid, data.optional_gas_ppm, 1) ||
+        !add_float("optional_gas", optional_gas_valid, data.optional_gas_ppm, optional_decimals) ||
         !add_nullable_cstr("optional_gas_type", optional_gas_type_text(data)) ||
-        !add_float("nh3", nh3_valid, data.nh3_ppm, 1) ||
-        !add_float("o3", o3_valid, data.optional_gas_ppm, 1) ||
-        !add_float("so2", so2_valid, data.optional_gas_ppm, 1) ||
-        !add_float("no2", no2_valid, data.optional_gas_ppm, 1) ||
-        !add_float("h2s", h2s_valid, data.optional_gas_ppm, 1) ||
+        !add_float("nh3", nh3_valid, data.nh3_ppm, nh3_decimals) ||
+        !add_float("o3", o3_valid, data.optional_gas_ppm, optional_decimals) ||
+        !add_float("so2", so2_valid, data.optional_gas_ppm, optional_decimals) ||
+        !add_float("no2", no2_valid, data.optional_gas_ppm, optional_decimals) ||
+        !add_float("h2s", h2s_valid, data.optional_gas_ppm, optional_decimals) ||
         !add_int("voc_index", voc_publish_valid, data.voc_index) ||
         !add_int("nox_index", nox_publish_valid, data.nox_index) ||
         !add_float("hcho", data.hcho_valid, data.hcho, 1) ||

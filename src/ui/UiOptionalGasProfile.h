@@ -32,6 +32,7 @@ struct Profile {
 const Profile &forType(OptionalGasType type);
 bool isKnown(OptionalGasType type);
 void formatValue(const Profile &profile, float ppm, char *buf, size_t buf_size);
+void formatValue(const Profile &profile, float ppm, uint8_t decimals, char *buf, size_t buf_size);
 void formatThreshold(const Profile &profile, float ppm, char *buf, size_t buf_size);
 void formatBandLabel(const Profile &profile, uint8_t band, char *buf, size_t buf_size);
 

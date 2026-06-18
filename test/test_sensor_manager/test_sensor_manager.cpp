@@ -357,7 +357,8 @@ void test_sensor_manager_optional_gas_o3_updates_generic_without_nh3_compat_fiel
     optional_gas.present = true;
     optional_gas.data_valid = true;
     optional_gas.warmup = false;
-    optional_gas.ppm = 4.2f;
+    optional_gas.ppm = 0.23f;
+    optional_gas.ppm_decimals = 2;
     optional_gas.gas_type = DfrOptionalGasSensor::OptionalGasType::O3;
 
     manager.begin(storage, 0.0f, 0.0f);
@@ -368,7 +369,8 @@ void test_sensor_manager_optional_gas_o3_updates_generic_without_nh3_compat_fiel
     TEST_ASSERT_TRUE(result.data_changed);
     TEST_ASSERT_TRUE(data.optional_gas_sensor_present);
     TEST_ASSERT_TRUE(data.optional_gas_valid);
-    TEST_ASSERT_FLOAT_WITHIN(0.01f, 4.2f, data.optional_gas_ppm);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.23f, data.optional_gas_ppm);
+    TEST_ASSERT_EQUAL_UINT8(2, data.optional_gas_ppm_decimals);
     TEST_ASSERT_EQUAL(static_cast<uint8_t>(DfrOptionalGasSensor::OptionalGasType::O3),
                       data.optional_gas_type);
     TEST_ASSERT_FALSE(data.nh3_sensor_present);

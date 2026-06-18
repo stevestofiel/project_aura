@@ -36,6 +36,10 @@ int clampi(int value, int min_value, int max_value) {
     return value;
 }
 
+uint8_t normalize_ppm_decimals(uint8_t decimals) {
+    return decimals <= 2 ? decimals : 1;
+}
+
 bool sync_ppm_sensor_fields(bool sensor_present,
                             bool sensor_warmup,
                             bool sensor_valid,
@@ -98,6 +102,9 @@ bool sync_optional_gas_fields(SensorData &data, const DfrOptionalGasSensor &opti
     const bool sensor_warmup = sensor_present && optional_gas.isWarmupActive();
     const bool sensor_valid = sensor_present && optional_gas.isDataValid();
     const float sensor_ppm = sensor_present ? optional_gas.ppm() : 0.0f;
+    const uint8_t sensor_decimals = sensor_present
+        ? normalize_ppm_decimals(optional_gas.ppmDecimals())
+        : 1;
     const float min_ppm = DfrOptionalGasSensor::minPpmForType(gas_type);
     const float max_ppm = DfrOptionalGasSensor::maxPpmForType(gas_type);
 
@@ -115,6 +122,10 @@ bool sync_optional_gas_fields(SensorData &data, const DfrOptionalGasSensor &opti
     const uint8_t gas_type_raw = static_cast<uint8_t>(gas_type);
     if (data.optional_gas_type != gas_type_raw) {
         data.optional_gas_type = gas_type_raw;
+        changed = true;
+    }
+    if (data.optional_gas_ppm_decimals != sensor_decimals) {
+        data.optional_gas_ppm_decimals = sensor_decimals;
         changed = true;
     }
 

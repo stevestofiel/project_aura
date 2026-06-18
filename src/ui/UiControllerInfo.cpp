@@ -130,7 +130,11 @@ void UiController::update_sensor_info_ui() {
 
             if (valid) {
                 char buf[16];
-                UiOptionalGasProfile::formatValue(profile, currentData.optional_gas_ppm, buf, sizeof(buf));
+                UiOptionalGasProfile::formatValue(profile,
+                                                  currentData.optional_gas_ppm,
+                                                  currentData.optional_gas_ppm_decimals,
+                                                  buf,
+                                                  sizeof(buf));
                 safe_label_set_text(objects.label_sensor_value, buf);
             } else if (warmup) {
                 safe_label_set_text(objects.label_sensor_value, "---");

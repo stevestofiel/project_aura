@@ -42,6 +42,7 @@ public:
     bool isDataValid() const { return data_valid_; }
     bool isWarmupActive() const;
     float ppm() const { return ppm_; }
+    uint8_t ppmDecimals() const { return ppm_decimals_; }
     GasType gasType() const { return gas_type_; }
     uint8_t rawGasType() const { return raw_gas_type_; }
     uint32_t lastDataMs() const { return last_data_ms_; }
@@ -69,7 +70,10 @@ private:
     bool isGasTypeAccepted(uint8_t gas_type_raw) const;
     bool pingAddress();
     bool setPassiveMode(FailureReason *failure_reason = nullptr);
-    bool readGasConcentration(float &ppm, uint8_t &gas_type, FailureReason &failure_reason);
+    bool readGasConcentration(float &ppm,
+                              uint8_t &gas_type,
+                              uint8_t &decimal_places,
+                              FailureReason &failure_reason);
     bool transact(const uint8_t *tx_frame, uint8_t *rx_frame, FailureReason *failure_reason = nullptr);
     bool isInStartupFaultGrace(uint32_t now_ms) const;
     static const char *failureReasonLabel(FailureReason reason);
@@ -88,6 +92,7 @@ private:
     bool data_valid_ = false;
     bool warned_type_mismatch_ = false;
     float ppm_ = 0.0f;
+    uint8_t ppm_decimals_ = 1;
     GasType gas_type_ = GasType::None;
     uint8_t raw_gas_type_ = 0;
     uint8_t fail_count_ = 0;

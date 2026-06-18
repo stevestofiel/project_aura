@@ -24,6 +24,7 @@ bool DfrMultiGasSensor::begin() {
     data_valid_ = false;
     warned_type_mismatch_ = false;
     ppm_ = 0.0f;
+    ppm_decimals_ = 1;
     gas_type_ = GasType::None;
     raw_gas_type_ = 0;
     fail_count_ = 0;
@@ -79,6 +80,7 @@ bool DfrMultiGasSensor::start() {
         present_ = false;
         data_valid_ = false;
         ppm_ = 0.0f;
+        ppm_decimals_ = 1;
         gas_type_ = GasType::None;
         raw_gas_type_ = 0;
         fail_count_ = 0;
@@ -104,6 +106,7 @@ bool DfrMultiGasSensor::start() {
         warmup_started_ms_ = millis();
         data_valid_ = false;
         ppm_ = 0.0f;
+        ppm_decimals_ = 1;
         gas_type_ = GasType::None;
         raw_gas_type_ = 0;
         fail_count_ = 0;
@@ -221,8 +224,9 @@ void DfrMultiGasSensor::poll() {
 
     float ppm = 0.0f;
     uint8_t gas_type = 0;
+    uint8_t decimals = 1;
     FailureReason read_failure = FailureReason::None;
-    if (!readGasConcentration(ppm, gas_type, read_failure)) {
+    if (!readGasConcentration(ppm, gas_type, decimals, read_failure)) {
         last_read_failure_reason_ = read_failure;
         if (fail_count_ < UINT8_MAX) {
             ++fail_count_;
@@ -274,6 +278,7 @@ void DfrMultiGasSensor::poll() {
     }
 
     ppm_ = ppm;
+    ppm_decimals_ = decimals;
     data_valid_ = !isWarmupActive();
 }
 
@@ -412,6 +417,7 @@ bool DfrMultiGasSensor::setPassiveMode(FailureReason *failure_reason) {
 
 bool DfrMultiGasSensor::readGasConcentration(float &ppm,
                                              uint8_t &gas_type,
+                                             uint8_t &decimal_places,
                                              FailureReason &failure_reason) {
     failure_reason = FailureReason::None;
     uint8_t tx[kFrameLen] = {0};
@@ -445,6 +451,7 @@ bool DfrMultiGasSensor::readGasConcentration(float &ppm,
 
     ppm = static_cast<float>(raw) * scale;
     gas_type = rx[4];
+    decimal_places = decimals;
     return true;
 }
 

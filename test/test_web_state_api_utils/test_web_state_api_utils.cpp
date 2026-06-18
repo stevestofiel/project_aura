@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 
+#include "drivers/DfrOptionalGasSensor.h"
 #include "web/WebStateApiUtils.h"
 
 void setUp() {}
@@ -27,6 +28,11 @@ void test_web_state_api_utils_fill_json_populates_sensor_network_and_settings_fi
     payload.data.co_sensor_present = true;
     payload.data.co_valid = true;
     payload.data.co_ppm = 4.5f;
+    payload.data.optional_gas_sensor_present = true;
+    payload.data.optional_gas_valid = true;
+    payload.data.optional_gas_ppm = 0.23f;
+    payload.data.optional_gas_ppm_decimals = 2;
+    payload.data.optional_gas_type = static_cast<uint8_t>(DfrOptionalGasSensor::OptionalGasType::O3);
     payload.network.wifi_enabled = true;
     payload.network.sta_connected = true;
     payload.network.wifi_ssid = "AuraNet";
@@ -86,6 +92,9 @@ void test_web_state_api_utils_fill_json_populates_sensor_network_and_settings_fi
     TEST_ASSERT_FALSE(doc["sensors"]["hcho_warmup"].as<bool>());
     TEST_ASSERT_EQUAL_FLOAT(4.5f, doc["sensors"]["co"].as<float>());
     TEST_ASSERT_TRUE(doc["sensors"]["co_sensor_present"].as<bool>());
+    TEST_ASSERT_EQUAL_FLOAT(0.23f, doc["sensors"]["optional_gas"].as<float>());
+    TEST_ASSERT_EQUAL_UINT8(2, doc["sensors"]["optional_gas_ppm_decimals"].as<uint8_t>());
+    TEST_ASSERT_EQUAL_STRING("O3", doc["sensors"]["optional_gas_type"].as<const char *>());
     TEST_ASSERT_FALSE(doc["derived"]["dew_point"].isNull());
     TEST_ASSERT_EQUAL_STRING("AuraNet", doc["network"]["wifi_ssid"].as<const char *>());
     TEST_ASSERT_EQUAL_STRING("192.168.1.2", doc["network"]["mqtt_broker"].as<const char *>());
@@ -123,6 +132,7 @@ void test_web_state_api_utils_fill_json_sets_nulls_when_values_are_unavailable()
     TEST_ASSERT_TRUE(doc["sensors"]["temp"].isNull());
     TEST_ASSERT_FALSE(doc["sensors"]["hcho_sensor_present"].as<bool>());
     TEST_ASSERT_FALSE(doc["sensors"]["hcho_warmup"].as<bool>());
+    TEST_ASSERT_TRUE(doc["sensors"]["optional_gas_ppm_decimals"].isNull());
     TEST_ASSERT_TRUE(doc["derived"]["mold"].isNull());
     TEST_ASSERT_TRUE(doc["network"]["rssi"].isNull());
     TEST_ASSERT_EQUAL_STRING("idle", doc["ota"]["status"].as<const char *>());

@@ -77,6 +77,17 @@ void format_number(float value, uint8_t decimals, char *buf, size_t buf_size) {
     trim_decimal(buf);
 }
 
+uint8_t display_decimals_for_value(float value, uint8_t decimals, uint8_t fallback) {
+    uint8_t normalized = fallback <= 2 ? fallback : 1;
+    if (decimals <= 2) {
+        normalized = decimals;
+    }
+    if (normalized == 2 && isfinite(value) && value >= 1.0f) {
+        return 1;
+    }
+    return normalized;
+}
+
 } // namespace
 
 const Profile &forType(OptionalGasType type) {
@@ -94,6 +105,13 @@ bool isKnown(OptionalGasType type) {
 
 void formatValue(const Profile &profile, float ppm, char *buf, size_t buf_size) {
     format_number(ppm, profile.value_decimals, buf, buf_size);
+}
+
+void formatValue(const Profile &profile, float ppm, uint8_t decimals, char *buf, size_t buf_size) {
+    format_number(ppm,
+                  display_decimals_for_value(ppm, decimals, profile.value_decimals),
+                  buf,
+                  buf_size);
 }
 
 void formatThreshold(const Profile &profile, float ppm, char *buf, size_t buf_size) {

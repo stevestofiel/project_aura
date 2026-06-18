@@ -338,9 +338,21 @@ void UiController::update_optional_gas_graph_overlays(bool has_values,
     char min_value[16];
     char now_value[16];
     char max_value[16];
-    UiOptionalGasProfile::formatValue(profile, min_ppm, min_value, sizeof(min_value));
-    UiOptionalGasProfile::formatValue(profile, latest_ppm, now_value, sizeof(now_value));
-    UiOptionalGasProfile::formatValue(profile, max_ppm, max_value, sizeof(max_value));
+    UiOptionalGasProfile::formatValue(profile,
+                                      min_ppm,
+                                      currentData.optional_gas_ppm_decimals,
+                                      min_value,
+                                      sizeof(min_value));
+    UiOptionalGasProfile::formatValue(profile,
+                                      latest_ppm,
+                                      currentData.optional_gas_ppm_decimals,
+                                      now_value,
+                                      sizeof(now_value));
+    UiOptionalGasProfile::formatValue(profile,
+                                      max_ppm,
+                                      currentData.optional_gas_ppm_decimals,
+                                      max_value,
+                                      sizeof(max_value));
 
     char min_buf[32];
     char now_buf[32];

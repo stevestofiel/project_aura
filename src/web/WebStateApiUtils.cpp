@@ -125,6 +125,12 @@ void fillJson(ArduinoJson::JsonObject root, const Payload &payload) {
         isfinite(data.optional_gas_ppm) &&
         data.optional_gas_ppm >= 0.0f;
     WebJsonUtils::jsonSetFloatOrNull(sensors, "optional_gas", optional_gas_valid, data.optional_gas_ppm);
+    if (optional_gas_present) {
+        sensors["optional_gas_ppm_decimals"] =
+            data.optional_gas_ppm_decimals <= 2 ? data.optional_gas_ppm_decimals : 1;
+    } else {
+        sensors["optional_gas_ppm_decimals"] = nullptr;
+    }
     sensors["optional_gas_type"] = optional_gas_present
         ? DfrOptionalGasSensor::optionalGasLabel(optional_gas_type)
         : nullptr;

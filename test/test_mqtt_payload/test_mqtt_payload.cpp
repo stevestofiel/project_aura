@@ -229,7 +229,8 @@ void test_state_payload_includes_specific_o3_and_hides_other_optional_gases() {
     SensorData data{};
     data.optional_gas_sensor_present = true;
     data.optional_gas_valid = true;
-    data.optional_gas_ppm = 4.2f;
+    data.optional_gas_ppm = 0.23f;
+    data.optional_gas_ppm_decimals = 2;
     data.optional_gas_type = static_cast<uint8_t>(DfrOptionalGasSensor::OptionalGasType::O3);
     data.nh3_sensor_present = false;
     data.nh3_valid = false;
@@ -237,13 +238,18 @@ void test_state_payload_includes_specific_o3_and_hides_other_optional_gases() {
 
     String payload = MqttPayloadBuilder::buildStatePayload(data, false, false, false, false);
 
-    assert_contains(payload, "\"optional_gas\":4.2");
+    assert_contains(payload, "\"optional_gas\":0.23");
     assert_contains(payload, "\"optional_gas_type\":\"O3\"");
     assert_contains(payload, "\"nh3\":null");
-    assert_contains(payload, "\"o3\":4.2");
+    assert_contains(payload, "\"o3\":0.23");
     assert_contains(payload, "\"so2\":null");
     assert_contains(payload, "\"no2\":null");
     assert_contains(payload, "\"h2s\":null");
+
+    data.optional_gas_ppm = 1.26f;
+    payload = MqttPayloadBuilder::buildStatePayload(data, false, false, false, false);
+    assert_contains(payload, "\"optional_gas\":1.3");
+    assert_contains(payload, "\"o3\":1.3");
 }
 
 void test_state_payload_includes_specific_h2s_and_hides_other_optional_gases() {
