@@ -32,6 +32,9 @@ constexpr uint32_t kMqttMdnsFailureCacheMs = 60UL * 1000UL;
 constexpr int kMqttConnectTimeoutShortMs = 3000;
 constexpr int kMqttConnectTimeoutSlowMs = 3000;
 constexpr uint16_t kMqttKeepaliveSeconds = 120;
+constexpr uint32_t kMqttLivenessHeartbeatMs = 60UL * 1000UL;
+constexpr uint32_t kMqttLivenessTimeoutMs =
+    static_cast<uint32_t>(kMqttKeepaliveSeconds) * 3UL * 1000UL;
 constexpr uint8_t kMqttLongRetryLogEveryAttempts = 6;
 constexpr size_t kMaxQueuedEventPublishesPerPoll = 4;
 constexpr const char *kFanTimerOptions[] = {
@@ -365,6 +368,7 @@ void MqttManager::stopClient() {
                                   std::memory_order_release);
     mqtt_connecting_ = false;
     mqtt_connected_ = false;
+    resetLiveness(false);
 
     if (!client_) {
         mqtt_client_started_ = false;
@@ -382,6 +386,7 @@ void MqttManager::destroyClient() {
     mqtt_connection_signal_.store(static_cast<uint8_t>(ConnectionSignal::None),
                                   std::memory_order_release);
     mqtt_active_client_.store(nullptr, std::memory_order_release);
+    resetLiveness(false);
     if (client_) {
         esp_mqtt_client_destroy(client_);
         client_ = nullptr;
@@ -463,28 +468,40 @@ bool MqttManager::connectTransport(const char *client_id, const char *will_topic
     return true;
 }
 
-bool MqttManager::publishMessage(const char *topic, const char *payload, bool retain) {
+int MqttManager::publishMessageQos(const char *topic, const char *payload, bool retain, int qos) {
     if (!client_ || !mqtt_connected_) {
-        return false;
+        return -1;
     }
     return esp_mqtt_client_publish(client_,
                                    topic,
                                    payload ? payload : "",
                                    0,
-                                   0,
-                                   retain ? 1 : 0) >= 0;
+                                   qos,
+                                   retain ? 1 : 0);
 }
 
-bool MqttManager::publishMessage(const char *topic, const uint8_t *payload, size_t length, bool retain) {
+int MqttManager::publishMessageQos(const char *topic,
+                                   const uint8_t *payload,
+                                   size_t length,
+                                   bool retain,
+                                   int qos) {
     if (!client_ || !mqtt_connected_) {
-        return false;
+        return -1;
     }
     return esp_mqtt_client_publish(client_,
                                    topic,
                                    reinterpret_cast<const char *>(payload),
                                    static_cast<int>(length),
-                                   0,
-                                   retain ? 1 : 0) >= 0;
+                                   qos,
+                                   retain ? 1 : 0);
+}
+
+bool MqttManager::publishMessage(const char *topic, const char *payload, bool retain) {
+    return publishMessageQos(topic, payload, retain, 0) >= 0;
+}
+
+bool MqttManager::publishMessage(const char *topic, const uint8_t *payload, size_t length, bool retain) {
+    return publishMessageQos(topic, payload, length, retain, 0) >= 0;
 }
 
 bool MqttManager::subscribeTopic(const char *topic) {
@@ -492,6 +509,83 @@ bool MqttManager::subscribeTopic(const char *topic) {
         return false;
     }
     return esp_mqtt_client_subscribe(client_, topic, 0) >= 0;
+}
+
+void MqttManager::resetLiveness(bool tracking, uint32_t now_ms) {
+    mqtt_published_msg_id_.store(0, std::memory_order_release);
+    mqtt_liveness_tracking_ = tracking;
+    mqtt_liveness_msg_id_ = 0;
+    mqtt_liveness_last_publish_ms_ = 0;
+    mqtt_liveness_last_ack_ms_ = tracking ? now_ms : 0;
+}
+
+void MqttManager::consumeLivenessAck(uint32_t now_ms) {
+    const int published_msg_id =
+        mqtt_published_msg_id_.exchange(0, std::memory_order_acq_rel);
+    if (!mqtt_liveness_tracking_ || published_msg_id <= 0) {
+        return;
+    }
+    if (published_msg_id != mqtt_liveness_msg_id_) {
+        return;
+    }
+    mqtt_liveness_msg_id_ = 0;
+    mqtt_liveness_last_ack_ms_ = now_ms;
+}
+
+void MqttManager::pauseLivenessWatchdog(uint32_t now_ms) {
+    if (!mqtt_liveness_tracking_) {
+        return;
+    }
+    // MQTT is intentionally paused for web transfers; do not age the broker liveness window.
+    mqtt_liveness_last_ack_ms_ = now_ms;
+    if (mqtt_liveness_msg_id_ == 0) {
+        mqtt_liveness_last_publish_ms_ = now_ms;
+    }
+}
+
+bool MqttManager::livenessHeartbeatDue(uint32_t now_ms) const {
+    if (!mqtt_liveness_tracking_ || mqtt_liveness_msg_id_ != 0) {
+        return false;
+    }
+    return mqtt_liveness_last_publish_ms_ == 0 ||
+           static_cast<uint32_t>(now_ms - mqtt_liveness_last_publish_ms_) >=
+               kMqttLivenessHeartbeatMs;
+}
+
+bool MqttManager::livenessTimedOut(uint32_t now_ms) const {
+    if (!mqtt_liveness_tracking_ || mqtt_liveness_msg_id_ == 0) {
+        return false;
+    }
+    return static_cast<uint32_t>(now_ms - mqtt_liveness_last_ack_ms_) >=
+           kMqttLivenessTimeoutMs;
+}
+
+void MqttManager::publishLivenessHeartbeat(uint32_t now_ms) {
+    char topic[kTopicBufferSize];
+    build_availability_topic(topic, sizeof(topic), mqtt_base_topic_);
+    const int msg_id = publishMessageQos(topic, Config::MQTT_AVAIL_ONLINE, true, 1);
+    if (msg_id < 0) {
+        forceLivenessReconnect(now_ms, "heartbeat publish failed");
+        return;
+    }
+    mqtt_liveness_msg_id_ = msg_id;
+    mqtt_liveness_last_publish_ms_ = now_ms;
+}
+
+void MqttManager::forceLivenessReconnect(uint32_t now_ms, const char *reason) {
+    const uint32_t stale_ms =
+        mqtt_liveness_last_ack_ms_ == 0
+            ? 0
+            : static_cast<uint32_t>(now_ms - mqtt_liveness_last_ack_ms_);
+    Logger::log(Logger::Warn, "MQTT",
+                "%s after %lu ms without PUBACK, reconnecting",
+                reason ? reason : "heartbeat liveness failure",
+                static_cast<unsigned long>(stale_ms));
+    mqtt_connected_ = false;
+    mqtt_connecting_ = false;
+    resetLiveness(false);
+    mqtt_client_needs_destroy_ = true;
+    ui_dirty_ = true;
 }
 
 bool MqttManager::prepareBrokerEndpoint(BrokerEndpoint &endpoint) {
@@ -1437,6 +1531,12 @@ void MqttManager::handleEvent(esp_mqtt_event_handle_t event) {
                                           std::memory_order_release);
             break;
         }
+        case MQTT_EVENT_PUBLISHED: {
+            if (event->msg_id > 0) {
+                mqtt_published_msg_id_.store(event->msg_id, std::memory_order_release);
+            }
+            break;
+        }
         case MQTT_EVENT_ERROR: {
             int error_rc = -1;
             if (event->error_handle) {
@@ -1557,6 +1657,7 @@ void MqttManager::poll(MqttRuntimeState &runtime_state) {
         mqtt_fail_count_ = 0;
         mqtt_connect_attempts_ = 0;
         mqtt_last_error_rc_.store(0, std::memory_order_release);
+        resetLiveness(true, millis());
         ui_dirty_ = true;
 
         char subscribe_topic[kTopicBufferSize];
@@ -1574,6 +1675,7 @@ void MqttManager::poll(MqttRuntimeState &runtime_state) {
         const bool was_connected = mqtt_connected_;
         mqtt_connected_ = false;
         mqtt_connecting_ = false;
+        resetLiveness(false);
         ui_dirty_ = true;
 
         if (!mqtt_manual_stop_ && was_connecting) {
@@ -1708,12 +1810,16 @@ void MqttManager::poll(MqttRuntimeState &runtime_state) {
         return;
     }
     uint32_t now = millis();
+    consumeLivenessAck(now);
     const bool publish_due =
         mqtt_publish_requested_ || (now - mqtt_last_publish_ms_ >= Config::MQTT_PUBLISH_MS);
     const bool discovery_due = mqtt_discovery_ && !mqtt_discovery_sent_;
     const bool events_due = MqttEventQueue::instance().hasPending();
-    if (discovery_due || publish_due || events_due) {
+    const bool liveness_due = livenessHeartbeatDue(now);
+    const bool liveness_timeout_due = livenessTimedOut(now);
+    if (discovery_due || publish_due || events_due || liveness_due || liveness_timeout_due) {
         if (WebHandlersShouldPauseMqttPublish()) {
+            pauseLivenessWatchdog(now);
             if (!mqtt_publish_deferred_by_web_) {
                 WebHandlersNoteMqttPublishDeferred();
                 mqtt_publish_deferred_by_web_ = true;
@@ -1728,6 +1834,16 @@ void MqttManager::poll(MqttRuntimeState &runtime_state) {
         mqtt_publish_deferred_by_web_ = false;
     }
     mqtt_connect_deferred_by_web_ = false;
+    if (liveness_timeout_due) {
+        forceLivenessReconnect(now, "heartbeat ack timeout");
+        return;
+    }
+    if (liveness_due) {
+        publishLivenessHeartbeat(now);
+        if (!mqtt_connected_) {
+            return;
+        }
+    }
     if (publish_due) {
         mqtt_publish_requested_ = false;
         publishState(runtime);

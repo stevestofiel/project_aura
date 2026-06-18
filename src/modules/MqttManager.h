@@ -100,11 +100,24 @@ private:
     bool prepareBrokerEndpoint(BrokerEndpoint &endpoint);
     void applyBrokerEndpoint(const BrokerEndpoint &endpoint);
     bool connectTransport(const char *client_id, const char *will_topic);
+    int publishMessageQos(const char *topic, const char *payload, bool retain, int qos);
+    int publishMessageQos(const char *topic,
+                          const uint8_t *payload,
+                          size_t length,
+                          bool retain,
+                          int qos);
     bool publishMessage(const char *topic, const char *payload, bool retain);
     bool publishMessage(const char *topic, const uint8_t *payload, size_t length, bool retain);
     bool subscribeTopic(const char *topic);
     bool connectClient();
     void handleEvent(esp_mqtt_event_handle_t event);
+    void resetLiveness(bool tracking, uint32_t now_ms = 0);
+    void consumeLivenessAck(uint32_t now_ms);
+    void pauseLivenessWatchdog(uint32_t now_ms);
+    bool livenessHeartbeatDue(uint32_t now_ms) const;
+    bool livenessTimedOut(uint32_t now_ms) const;
+    void publishLivenessHeartbeat(uint32_t now_ms);
+    void forceLivenessReconnect(uint32_t now_ms, const char *reason);
     void publishDiscoverySensor(const char *object_id, const char *name,
                                 const char *unit, const char *device_class,
                                 const char *state_class, const char *value_template,
@@ -152,6 +165,7 @@ private:
     std::atomic<esp_mqtt_client_handle_t> mqtt_active_client_{nullptr};
     std::atomic<uint8_t> mqtt_connection_signal_{static_cast<uint8_t>(ConnectionSignal::None)};
     std::atomic<int> mqtt_last_error_rc_{0};
+    std::atomic<int> mqtt_published_msg_id_{0};
     mutable StaticSemaphore_t command_context_mutex_buffer_{};
     mutable SemaphoreHandle_t command_context_mutex_ = nullptr;
 
@@ -188,6 +202,10 @@ private:
     bool mqtt_manual_stop_ = false;
     bool mqtt_client_needs_destroy_ = false;
     bool mqtt_tls_waiting_for_time_ = false;
+    bool mqtt_liveness_tracking_ = false;
+    int mqtt_liveness_msg_id_ = 0;
+    uint32_t mqtt_liveness_last_publish_ms_ = 0;
+    uint32_t mqtt_liveness_last_ack_ms_ = 0;
     std::atomic<bool> mqtt_system_time_valid_{false};
     // MQTT_EVENT_DATA may arrive in chunks; these buffers belong only to the esp-mqtt event task.
     String mqtt_event_topic_;
