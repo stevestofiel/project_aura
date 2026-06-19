@@ -615,6 +615,9 @@ WebUiBridge::ApplyResult UiController::applyWebUiSettingsBridge(
             controller->storage.requestSave();
             return fail(500, "Failed to persist display_name");
         }
+        controller->networkManager.refreshHostnameFromDisplayName();
+        controller->connectivityRuntime.update(controller->networkManager, controller->mqttManager);
+        controller->markWebPagePanelDirty();
         applied_display_name = true;
     }
 
@@ -2568,4 +2571,3 @@ void UiController::init_ui_defaults() {
     update_ui();
     confirm_hide();
 }
-
