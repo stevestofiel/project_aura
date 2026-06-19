@@ -99,6 +99,9 @@ Useful API routes used by the dashboard:
 ## Network Requirements
 - AP setup mode (`http://192.168.4.1`) is local-only and works without internet.
 - STA mode dashboard (`http://<hostname>.local/dashboard` or `http://<ip>/dashboard`) requires the client and Aura to be in the same L2/L3 network path.
+- The hostname is user-friendly and mDNS-safe:
+  - Uses **Settings → Device Name** (converted to lowercase `a-z`, `0-9`, `-`) when set.
+  - Falls back to `aura-<mac-suffix>` when Device Name is empty or not mDNS-safe.
 - If mDNS (`.local`) is blocked on your network, use direct IP from the device screen or router DHCP table.
 - Avoid guest networks, client isolation, or VLAN rules that block peer-to-peer LAN traffic.
 - Required local traffic:

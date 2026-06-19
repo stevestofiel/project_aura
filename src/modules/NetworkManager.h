@@ -57,6 +57,7 @@ public:
     void clearCredentials();
     void connectSta();
     void startApOnDemand();
+    void refreshHostnameFromDisplayName();
     void startScan();
     void stopScan();
 

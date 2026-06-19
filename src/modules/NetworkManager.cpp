@@ -41,6 +41,8 @@ constexpr uint32_t kWifiStaStartSettleMs = 150UL;
 constexpr uint32_t kWifiColdBootWarmupMs = 2500UL;
 constexpr uint8_t kWifiColdBootSoftConnectAttempts = 3;
 constexpr wifi_ps_type_t kWifiStaDefaultPowerSaveMode = WIFI_PS_NONE;
+constexpr size_t kWifiHostnameMaxLen = 32;
+constexpr const char *kWifiHostnameFallback = "aura";
 
 bool is_retryable_connect_reason(wifi_err_reason_t reason) {
     return reason == WIFI_REASON_AUTH_EXPIRE ||
@@ -60,10 +62,54 @@ uint32_t mac_suffix_24bit() {
     return static_cast<uint32_t>(ESP.getEfuseMac() & 0xFFFFFFULL);
 }
 
+bool is_ascii_alnum(unsigned char ch) {
+    return (ch >= 'a' && ch <= 'z') ||
+           (ch >= 'A' && ch <= 'Z') ||
+           (ch >= '0' && ch <= '9');
+}
+
+char ascii_lower(unsigned char ch) {
+    if (ch >= 'A' && ch <= 'Z') {
+        return static_cast<char>(ch - 'A' + 'a');
+    }
+    return static_cast<char>(ch);
+}
+
 String build_wifi_hostname() {
     char hostname[16];
     snprintf(hostname, sizeof(hostname), "aura-%06x", static_cast<unsigned>(mac_suffix_24bit()));
     return String(hostname);
+}
+
+String build_wifi_hostname_from_display_name(const String &display_name) {
+    String hostname;
+    hostname.reserve(kWifiHostnameMaxLen);
+    bool last_was_dash = false;
+
+    const char *raw = display_name.c_str();
+    while (*raw != '\0' && hostname.length() < kWifiHostnameMaxLen) {
+        const unsigned char ch = static_cast<unsigned char>(*raw++);
+        if (is_ascii_alnum(ch)) {
+            hostname += ascii_lower(ch);
+            last_was_dash = false;
+            continue;
+        }
+
+        if ((ch == ' ' || ch == '-' || ch == '_' || ch == '.') &&
+            hostname.length() > 0 && !last_was_dash) {
+            hostname += '-';
+            last_was_dash = true;
+        }
+    }
+
+    size_t trim_len = hostname.length();
+    while (trim_len > 0 && hostname[trim_len - 1] == '-') {
+        --trim_len;
+    }
+    if (trim_len < hostname.length()) {
+        hostname.remove(trim_len);
+    }
+    return hostname;
 }
 
 String build_ap_ssid() {
@@ -258,13 +304,12 @@ void AuraNetworkManager::begin(StorageManager &storage) {
     }
     hostname_ = build_wifi_hostname();
     if (hostname_.isEmpty()) {
-        hostname_ = "aura";
+        hostname_ = kWifiHostnameFallback;
     }
     ap_ssid_ = build_ap_ssid();
     if (ap_ssid_.isEmpty()) {
         ap_ssid_ = Config::WIFI_AP_SSID;
     }
-    LOGI("WiFi", "hostname: %s", hostname_.c_str());
     LOGI("WiFi", "AP SSID: %s", ap_ssid_.c_str());
     LOGI("WiFi", "web backend: %s", serverBackend().name());
     resetColdBootStaAssist();
@@ -279,6 +324,8 @@ void AuraNetworkManager::begin(StorageManager &storage) {
     registerServerRoutes();
 
     storage_->loadWiFiSettings(wifi_ssid_, wifi_pass_, wifi_enabled_);
+    refreshHostnameFromDisplayName();
+    LOGI("WiFi", "hostname: %s", hostname_.c_str());
     wifi_enabled_dirty_ = false;
     if (!wifi_ssid_.isEmpty() &&
         !WebInputValidation::isWifiSsidValid(wifi_ssid_, WebInputValidation::kWifiSsidMaxBytes)) {
@@ -314,6 +361,41 @@ void AuraNetworkManager::begin(StorageManager &storage) {
         wifi_state_ = WIFI_STATE_OFF;
     }
     wifi_state_last_ = wifi_state_;
+}
+
+void AuraNetworkManager::refreshHostnameFromDisplayName() {
+    String next_hostname;
+    if (storage_) {
+        next_hostname = build_wifi_hostname_from_display_name(storage_->config().web_display_name);
+    }
+    if (next_hostname.isEmpty()) {
+        next_hostname = build_wifi_hostname();
+    }
+    if (next_hostname.isEmpty()) {
+        next_hostname = kWifiHostnameFallback;
+    }
+    if (hostname_ == next_hostname) {
+        return;
+    }
+
+    const String previous_hostname = hostname_;
+    hostname_ = next_hostname;
+    LOGI("WiFi", "hostname updated: %s -> %s",
+         previous_hostname.isEmpty() ? "<empty>" : previous_hostname.c_str(),
+         hostname_.c_str());
+
+    if (wifi_state_ == WIFI_STATE_STA_CONNECTED) {
+        stopMdns();
+        if (!WiFi.setHostname(hostname_.c_str())) {
+            LOGW("WiFi", "setHostname failed");
+        }
+        startMdns();
+    } else if (wifi_state_ == WIFI_STATE_STA_CONNECTING) {
+        if (!hostname_.isEmpty() && !WiFi.setHostname(hostname_.c_str())) {
+            LOGW("WiFi", "setHostname failed");
+        }
+    }
+    wifi_ui_dirty_ = true;
 }
 
 void AuraNetworkManager::attachMqttContext(MqttRuntime &mqtt_runtime,
