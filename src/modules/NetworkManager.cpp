@@ -6,7 +6,6 @@
 
 #include "modules/NetworkManager.h"
 
-#include <ctype.h>
 #include <cstring>
 #include <memory>
 
@@ -43,6 +42,7 @@ constexpr uint32_t kWifiColdBootWarmupMs = 2500UL;
 constexpr uint8_t kWifiColdBootSoftConnectAttempts = 3;
 constexpr wifi_ps_type_t kWifiStaDefaultPowerSaveMode = WIFI_PS_NONE;
 constexpr size_t kWifiHostnameMaxLen = 32;
+constexpr const char *kWifiHostnameFallback = "aura";
 
 bool is_retryable_connect_reason(wifi_err_reason_t reason) {
     return reason == WIFI_REASON_AUTH_EXPIRE ||
@@ -62,6 +62,19 @@ uint32_t mac_suffix_24bit() {
     return static_cast<uint32_t>(ESP.getEfuseMac() & 0xFFFFFFULL);
 }
 
+bool is_ascii_alnum(unsigned char ch) {
+    return (ch >= 'a' && ch <= 'z') ||
+           (ch >= 'A' && ch <= 'Z') ||
+           (ch >= '0' && ch <= '9');
+}
+
+char ascii_lower(unsigned char ch) {
+    if (ch >= 'A' && ch <= 'Z') {
+        return static_cast<char>(ch - 'A' + 'a');
+    }
+    return static_cast<char>(ch);
+}
+
 String build_wifi_hostname() {
     char hostname[16];
     snprintf(hostname, sizeof(hostname), "aura-%06x", static_cast<unsigned>(mac_suffix_24bit()));
@@ -74,14 +87,10 @@ String build_wifi_hostname_from_display_name(const String &display_name) {
     bool last_was_dash = false;
 
     const char *raw = display_name.c_str();
-    if (!raw) {
-        return hostname;
-    }
-
     while (*raw != '\0' && hostname.length() < kWifiHostnameMaxLen) {
         const unsigned char ch = static_cast<unsigned char>(*raw++);
-        if (isalnum(ch)) {
-            hostname += static_cast<char>(tolower(ch));
+        if (is_ascii_alnum(ch)) {
+            hostname += ascii_lower(ch);
             last_was_dash = false;
             continue;
         }
@@ -93,8 +102,12 @@ String build_wifi_hostname_from_display_name(const String &display_name) {
         }
     }
 
-    while (hostname.endsWith("-")) {
-        hostname.remove(hostname.length() - 1);
+    size_t trim_len = hostname.length();
+    while (trim_len > 0 && hostname[trim_len - 1] == '-') {
+        --trim_len;
+    }
+    if (trim_len < hostname.length()) {
+        hostname.remove(trim_len);
     }
     return hostname;
 }
@@ -291,7 +304,7 @@ void AuraNetworkManager::begin(StorageManager &storage) {
     }
     hostname_ = build_wifi_hostname();
     if (hostname_.isEmpty()) {
-        hostname_ = "aura";
+        hostname_ = kWifiHostnameFallback;
     }
     ap_ssid_ = build_ap_ssid();
     if (ap_ssid_.isEmpty()) {
@@ -359,7 +372,7 @@ void AuraNetworkManager::refreshHostnameFromDisplayName() {
         next_hostname = build_wifi_hostname();
     }
     if (next_hostname.isEmpty()) {
-        next_hostname = "aura";
+        next_hostname = kWifiHostnameFallback;
     }
     if (hostname_ == next_hostname) {
         return;
